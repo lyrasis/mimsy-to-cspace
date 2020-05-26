@@ -2,35 +2,39 @@ require_relative 'config'
 
 # conversion of Mimsy people table to CollectionSpace Person authority csv
 contactsjob = Kiba.parse do
-  source Kiba::Common::Sources::CSV, filename: 'data/mimsy/people_contacts.tsv', csv_options: TSVOPT
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/people_contacts.tsv", csv_options: TSVOPT
   transform { |r| r.to_h }
-#  transform SelectRows::WithFieldEqualTo, action: :keep, field: :id, value: '78'
-  transform Clean::FieldClean,
+#  transform FilterRows::FieldEqualTo, action: :keep, field: :id, value: '78'
+  transform Clean::RegexpFindReplaceFieldVals,
     fields: [:address1, :address2, :address3],
-    instructions: {
-      :replace => {
-        '^x+$' => ''
-      },
-      :remove_if_contains => [
-        '[Uu]nknown',
-        '[Dd]eceased'
-        ]
-    }
-  transform ConcatColumns, sources: [:department, :address1], target: :combinedaddress1, sep: ' --- '
-  transform ConcatColumns, sources: [:address2, :address3], target: :combinedaddress2, sep: ' --- '
-  transform Reshape::CombineAndTypeFields,
+    find: '^x+$',
+    replace: ''
+  transform Delete::FieldValueContainingString,
+    fields: [:address1, :address2, :address3],
+    match: 'unknown',
+    casesensitive: false
+  transform Delete::FieldValueContainingString,
+    fields: [:address1, :address2, :address3],
+    match: 'deceased',
+    casesensitive: false
+  
+
+  transform CombineValues::FromFieldsWithDelimiter, sources: [:department, :address1], target: :combinedaddress1, sep: ' --- '
+  transform CombineValues::FromFieldsWithDelimiter, sources: [:address2, :address3], target: :combinedaddress2, sep: ' --- '
+  transform Reshape::CollapseMultipleFieldsToOneTypedFieldPair,
     sourcefieldmap: {
       :work_phone => 'business',
       :home_phone => 'home'
     },
     datafield: :phone,
-    typefield: :phone_type
+    typefield: :phone_type,
+    targetsep: ';'
   
     extend Kiba::Common::DSLExtensions::ShowMe
     show_me!
 
     filename = 'data/working/people_contacts.tsv'
-    destination Kiba::Common::Destinations::CSV, filename: filename, csv_options: TSVOPT
+    destination Kiba::Common::Destinations::CSV, filename: filename
     post_process do
       puts "File generated in #{filename}"
     end
@@ -38,47 +42,67 @@ end
 
 
 personjob = Kiba.parse do
-  @varnames = Lookup.csv_to_multi_hash(file: 'data/mimsy/people_variations.tsv', keycolumn: :link_id)
-  @contacts = Lookup.csv_to_multi_hash(file: 'data/working/people_contacts.tsv', keycolumn: :link_id)
-  source Kiba::Common::Sources::CSV, filename: 'data/mimsy/people.tsv', csv_options: TSVOPT
+  @varnames = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/people_variations.tsv",
+                                       csvopt: TSVOPT,
+                                       keycolumn: :link_id)
+  @contacts = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/people_contacts.tsv",
+                                       csvopt: {headers: true, header_converters: :symbol},
+                                       keycolumn: :link_id)
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/people.tsv", csv_options: TSVOPT
   # Ruby's CSV gives us "CSV::Row" but we want Hash
   transform { |r| r.to_h }
 
-  transform SelectRows::WithFieldEqualTo, action: :keep, field: :individual, value: 'Y'
-  transform SelectRows::WithFieldEqualTo, action: :reject, field: :link_id, value: '-9999'
-  transform OneColumnToMulti, source: :preferred_name, targets: [:termDisplayName, :termName]
-  transform RenameField, from: :birth_date, to: :birthDateGroup
-  transform RenameField, from: :birth_place, to: :birthPlace
-  transform RenameField, from: :death_date, to: :deathDateGroup
-  transform RenameField, from: :death_place, to: :deathPlace
-  transform RenameField, from: :firstmid_name, to: :foreName
-  transform RenameField, from: :suffix_name, to: :nameAdditions
-  transform RenameField, from: :lastsuff_name, to: :surName
-  transform RenameField, from: :nationality, to: :nationality
-  transform RenameField, from: :note, to: :nameNote
-  transform RenameField, from: :title_name, to: :title
-  transform ConcatColumns, sources: [:brief_bio, :description], target: :bioNote, sep: ' --- '
-  transform AppendStringToFieldValue, target_column: :nameAdditions, source_column: :honorary_suffix, sep: ', '
-  transform StaticFieldValueMapping, source: :language, target: :termLanguage, mapping: LANGUAGES
-  transform StaticFieldValueMapping, source: :gender, target: :gender, mapping: GENDER, delete_source: false
-  transform ConstantValue, target: :termPrefForLang, value: 'true'
-  transform ConstantValue, target: :termSourceLocal, value: 'Mimsy'
-  transform ConstantValue, target: :termSourceDetail, value: 'people.csv/PREFERRED_NAME'
-  transform Lookup::MultiRowLookupMerge,
-    fieldmap: {:termDisplayNameNonPreferred => :variation},
-    constantmap: {
-      :termPrefForLangNonPreferred => 'false',
-      :termSourceLocalNonPreferred => 'Mimsy',
-      :termSourceDetailNonPreferred => 'people_variation.csv/VARIATION'
-    },
+  transform FilterRows::FieldEqualTo, action: :keep, field: :individual, value: 'Y'
+  transform FilterRows::FieldEqualTo, action: :reject, field: :link_id, value: '-9999'
+  # Uncomment if variations are being treated as alternate term forms
+  # transform Copy::Field, from: :preferred_name, to: :termName
+  transform Rename::Field, from: :preferred_name, to: :termDisplayName
+  transform Rename::Field, from: :birth_date, to: :birthDateGroup
+  transform Rename::Field, from: :birth_place, to: :birthPlaceLocal
+  transform Rename::Field, from: :death_date, to: :deathDateGroup
+  transform Rename::Field, from: :death_place, to: :deathPlaceLocal
+  transform Rename::Field, from: :firstmid_name, to: :foreName
+  transform Rename::Field, from: :lastsuff_name, to: :surName
+  transform CombineValues::FromFieldsWithDelimiter, sources: [:suffix_name, :honorary_suffix], target: :nameAdditions, sep: ', '
+  transform Rename::Field, from: :nationality, to: :nationality
+  transform Rename::Field, from: :note, to: :nameNote
+  transform Rename::Field, from: :title_name, to: :title
+  transform CombineValues::FromFieldsWithDelimiter, sources: [:brief_bio, :description], target: :bioNote, sep: ' --- '
+  transform Replace::FieldValueWithStaticMapping, source: :language, target: :termLanguage, mapping: LANGUAGES
+  transform Replace::FieldValueWithStaticMapping, source: :gender, target: :gender, mapping: GENDER, delete_source: false
+  transform Merge::ConstantValue, target: :termPrefForLang, value: 'true'
+  transform Merge::ConstantValue, target: :termSourceLocal, value: 'Mimsy export'
+  transform Merge::ConstantValue, target: :termSourceDetail, value: 'people.csv/PREFERRED_NAME'
+  # This puts the first value from variations that does not match preferred term in :termName
+  transform Merge::MultiRowLookup,
+    fieldmap: {:termName => :variation},
     lookup: @varnames,
     keycolumn: :link_id,
     exclusion_criteria: {
-      :equal => {
+      :field_equal => {
         :termDisplayName => :variation
       }
+    },
+    selection_criteria: {
+      :position => 'first'
     }
-  transform Lookup::MultiRowLookupMerge,
+  # Keep in case they want to treat variations as alternate term forms
+  # transform Merge::MultiRowLookup,
+  #   fieldmap: {:termDisplayNameNonPreferred => :variation},
+  #   constantmap: {
+  #     :termPrefForLangNonPreferred => 'false',
+  #     :termSourceLocalNonPreferred => 'Mimsy export',
+  #     :termSourceDetailNonPreferred => 'people_variation.csv/VARIATION'
+  #   },
+  #   lookup: @varnames,
+  #   keycolumn: :link_id,
+  #   exclusion_criteria: {
+  #     :field_equal => {
+  #       :termDisplayName => :variation
+  #     }
+  #  }
+  
+  transform Merge::MultiRowLookup,
     fieldmap: {:addressPlace1 => :combinedaddress1,
                :addressPlace2 => :combinedaddress2,
                :addressMunicipality => :city,
@@ -93,15 +117,13 @@ personjob = Kiba.parse do
                },
     lookup: @contacts,
     keycolumn: :link_id
-  transform DeleteFields, [:approved, :individual, :deceased, :link_id]
+  transform Delete::Fields, fields: [:approved, :individual, :deceased, :link_id]
 
-  # useful to show the records as they flow:
-  
-  extend Kiba::Common::DSLExtensions::ShowMe
-  show_me!
+#  extend Kiba::Common::DSLExtensions::ShowMe
+#  show_me!
 
-  filename = 'data/cs/person.csv'
-  destination Kiba::Common::Destinations::CSV, filename: filename, csv_options: CSVOUTOPT
+  filename = 'data/cs/person-variations_first_val_as_name.csv'
+  destination Kiba::Extend::Destinations::CSV, filename: filename, initial_headers: [:termDisplayName]
   
   post_process do
     puts "File generated in #{filename}"
