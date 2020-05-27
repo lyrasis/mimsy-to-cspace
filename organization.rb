@@ -53,34 +53,7 @@ orgjob = Kiba.parse do
         :termDisplayName => :variation
       }
     }
-
-  transform Merge::MultiRowLookup,
-    fieldmap: {
-      :contactName => :contact
-    },
-    lookup: @contacts,
-    keycolumn: :link_id
   
-  transform Merge::MultiRowLookup,
-    fieldmap: {:addressPlace1 => :combinedaddress1,
-               :addressPlace2 => :combinedaddress2,
-               :addressMunicipality => :city,
-               :addressStateOrProvince => :state_province,
-               :addressPostCode => :postal_code,
-               :addressCountry => :country,
-               :faxNumber => :fax,
-               :email => :e_mail,
-               :webAddress => :www_address,
-               :telephoneNumber => :phone,
-               :telephoneNumberType => :phone_type
-               },
-    lookup: @contacts,
-    keycolumn: :link_id
-
-  transform Delete::FieldValueMatchingRegexp,
-    fields: [:gender],
-    match: '^N$'
-
   transform Delete::FieldValueIfEqualsOtherField,
     delete: :lastsuff_name,
     if_equal_to: :termDisplayName
@@ -103,7 +76,7 @@ orgjob = Kiba.parse do
   transform Delete::Fields, fields: [:deceased]
 
   # The following aren't mapped
-  transform Delete::Fields, fields: [:approved, :individual, :link_id]
+  transform Delete::Fields, fields: [:individual, :link_id]
 
 #  extend Kiba::Common::DSLExtensions::ShowMe
 #  show_me!
