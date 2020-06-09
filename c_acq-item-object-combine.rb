@@ -1,34 +1,14 @@
 require_relative 'config'
 
-# produce working table without uncataloged rows
-ai_job = Kiba.parse do
-  source Kiba::Common::Sources::CSV,
-    filename: "#{DATADIR}/mimsy/acquisition_items.tsv",
-    csv_options: TSVOPT
-
-  transform { |r| r.to_h }
-
-  transform FilterRows::FieldPopulated, action: :keep, field: :m_id
-  transform Rename::Field, from: :m_id, to: :mkey
-  filename = "#{DATADIR}/working/acq_items.tsv"
-  destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
-  
-  post_process do
-    puts "File generated in #{filename}"
-  end
-end
-
-Kiba.run(ai_job)
-
-# conversion of Mimsy data to CollectionSpace Acquisition procedure csv
 objacqjob = Kiba.parse do
-  @ai_cat = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/acq_items.tsv",
+  extend Kiba::Common::DSLExtensions::ShowMe
+  @ai_cat = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/acquisition_items.tsv",
                                      csvopt: TSVOPT,
-                                     keycolumn: :mkey)
+                                     keycolumn: :m_id)
   @acq = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/acquisitions.tsv",
                                   csvopt: TSVOPT,
                                   keycolumn: :akey)
-  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/catalogue.tsv", csv_options: TSVOPT
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/catalogue.tsv", csv_options: TSVOPT
   # Ruby's CSV gives us "CSV::Row" but we want Hash
   transform { |r| r.to_h }
 
@@ -71,8 +51,10 @@ objacqjob = Kiba.parse do
       :aq_terms => :terms,
       :aq_external_file => :external_file
     },
-    delim: MVDELIM  
-#  extend Kiba::Common::DSLExtensions::ShowMe
+    delim: MVDELIM
+
+  transform Clean::DelimiterOnlyFields, delim: MVDELIM
+
 #  show_me!
 
   filename = 'data/working/object-acq.tsv'

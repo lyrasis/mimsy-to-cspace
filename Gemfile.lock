@@ -1,11 +1,12 @@
 GIT
   remote: git://github.com/lyrasis/kiba-extend.git
-  revision: 53658cec6c099ef17a89a9915e4a50982522528d
+  revision: dca1641672e0c1e0a348f27f90fc82e3f5c19c06
   branch: master
   specs:
     kiba-extend (0.1.0)
       kiba (>= 2.0.0)
       kiba-common (>= 0.9.0)
+      xxhash
 
 GEM
   remote: https://rubygems.org/
@@ -20,6 +21,7 @@ GEM
     pry (0.13.1)
       coderay (~> 1.1)
       method_source (~> 1.0)
+    xxhash (0.4.0)
 
 PLATFORMS
   ruby
