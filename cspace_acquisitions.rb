@@ -1,23 +1,65 @@
 require_relative 'config'
 
+# creates a copy of acquisitions.tsv that we can use to merge in reshaped data
 wrkacq = Kiba.parse do
-  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/acquisitions.tsv", csv_options: TSVOPT
-  # Ruby's CSV gives us "CSV::Row" but we want Hash
-  transform { |r| r.to_h }
+  extend Kiba::Common::DSLExtensions::ShowMe
+  @srcrows = 0
+  @outrows = 0
 
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/acquisitions.tsv", csv_options: TSVOPT
+  transform { |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform{ |r| @outrows += 1; r }
   filename = 'data/working/acquisitions.tsv'
   destination Kiba::Extend::Destinations::CSV,
     filename: filename,
     csv_options: TSVOPT
   post_process do
-    puts "File generated in #{filename}"
+    puts "\n\nACQUISITIONS COPY"
+    puts "#{@outrows} (of #{@srcrows})"
+    puts "file: #{filename}"
   end
 end
 Kiba.run(wrkacq)
 
+# creates working copy of acquisition_sources with preferred_name column merged in from people
+namesjob = Kiba.parse do
+  extend Kiba::Common::DSLExtensions::ShowMe
+  @srcrows = 0
+  @outrows = 0
+  @names = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/people.tsv",
+                                       csvopt: TSVOPT,
+                                       keycolumn: :link_id)
+
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/acquisition_sources.tsv", csv_options: TSVOPT
+  transform { |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform Merge::MultiRowLookup,
+    lookup: @names,
+    keycolumn: :link_id,
+    fieldmap: {
+      :preferred_name => :preferred_name
+    }
+#  show_me!
+  transform{ |r| @outrows += 1; r }
+  filename = 'data/working/acquisition_sources.tsv'
+  destination Kiba::Extend::Destinations::CSV,
+    filename: filename,
+    csv_options: TSVOPT
+  post_process do
+    puts "\n\nACQUISITIONS COPY"
+    puts "#{@outrows} (of #{@srcrows})"
+    puts "file: #{filename}"
+  end
+end
+Kiba.run(namesjob)
+
+# create cspace acquisitions records
 acqjob = Kiba.parse do
   extend Kiba::Common::DSLExtensions::ShowMe
-
+  @deduper = {}
   @srcrows = 0
   @outrows = 0
 
@@ -28,13 +70,28 @@ acqjob = Kiba.parse do
   @acq = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/acquisitions.tsv",
                                        csvopt: TSVOPT,
                                        keycolumn: :akey)
+  @src = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/acquisition_sources.tsv",
+                                       csvopt: TSVOPT,
+                                       keycolumn: :akey)
 
   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/acquisitions.tsv", csv_options: TSVOPT
   # Ruby's CSV gives us "CSV::Row" but we want Hash
   transform { |r| r.to_h }
   transform{ |r| @srcrows += 1; r }
 
+  # ref number is required
+  transform FilterRows::FieldPopulated, action: :keep, field: :ref_number
+
+  # get rid of acq fields we are going to merge in from copy
   transform Delete::Fields, fields: %i[status status_date requested_by request_date legal_date legal_date_display]
+
+  transform Merge::MultiRowLookup,
+    lookup: @src,
+    keycolumn: :akey,
+    fieldmap: {
+      :acquisitionSource => :preferred_name,
+    },
+    delim: MVDELIM  
 
   transform Merge::MultiRowLookup,
     lookup: @acq,
@@ -112,12 +169,12 @@ acqjob = Kiba.parse do
     fields: %i[aiApprovalStatus],
     find: '^\\\\$',
     replace: ''
-
+  
   transform CombineValues::AcrossFieldGroup,
     fieldmap: {
-      :approvalStatus => %i[approvalStatus approvalStatusReq approvalStatusLegal approvalStatusLegalDisp aiApprovalStatus],
-      :approvalIndividual => %i[approvalIndividual approvalIndividualReq approvalIndividualLegal approvalIndividualLegalDisp aiApprovalIndiv],
-      :approvalDate => %i[approvalDate approvalDateReq approvalDateLegal approvalDateLegalDisp aiApprovalDate]
+      :approvalStatus => %i[approvalStatusReq approvalStatus aiApprovalStatus approvalStatusLegal approvalStatusLegalDisp],
+      :approvalIndividual => %i[approvalIndividualReq approvalIndividual aiApprovalIndiv approvalIndividualLegal approvalIndividualLegalDisp],
+      :approvalDate => %i[approvalDateReq approvalDate aiApprovalDate approvalDateLegal approvalDateLegalDisp]
     },
     sep: MVDELIM
 
@@ -143,7 +200,6 @@ acqjob = Kiba.parse do
     keycolumn: :akey,
     fieldmap: {
       :aiAcquisitionNote => :note,
-      :aiTransferDate => :transfer_date,
       :accessionDateGroup => :accession_date
     },
     delim: MVDELIM
@@ -171,25 +227,105 @@ acqjob = Kiba.parse do
   transform Rename::Field, from: :ref_number, to: :acquisitionReferenceNumber
   transform Rename::Field, from: :terms, to: :acquisitionProvisos
   transform Rename::Field, from: :total_offer_price, to: :groupPurchasePriceValue
-  
+
+  transform Merge::ConstantValueConditional,
+    target: :acquisitionMethod,
+    value: 'gift',
+    conditions: {
+      :fields_empty => %i[acquisitionMethod],
+      :fields_match_regexp => {
+        :acquisitionReason => [
+          '^[Gg]ift$',
+          '^[Dd]onation$'
+          ]
+      }
+    }
+
+  transform Merge::ConstantValueConditional,
+    target: :acquisitionMethod,
+    value: 'transfer',
+    conditions: {
+      :fields_empty => %i[acquisitionMethod],
+      :fields_match_regexp => {
+        :acquisitionReason => [
+          '^[Tt]ransfer$'
+        ]
+      }
+    }
+
+  transform Deduplicate::Flag, on_field: :acquisitionReferenceNumber, in_field: :duplicate, using: @deduper
+
   transform Delete::Fields, fields: %i[akey status requested_by request_date legal_date total_requested
                                        external_file aiTransferDate]
-#  transform Clean::DelimiterOnlyFields, delim: MVDELIM
 
-  show_me!
+#  show_me!
   
   transform{ |r| @outrows += 1; r }
-  filename = 'data/cs/acquisitions.csv'
+  filename = 'data/working/acquisitions_duplicates_flagged.tsv'
   destination Kiba::Extend::Destinations::CSV,
     filename: filename,
     initial_headers: %i[acquisitionReferenceNumber],
-    csv_options: CSVOPT
+    csv_options: TSVOPT
     
   post_process do
-    puts "\n\nACQ RECORDS"
+    puts "\n\nACQ RECORDS WITH DUPLICATES FLAGGED"
     puts "#{@outrows} (of #{@srcrows})"
     puts "file: #{filename}"
   end
 end
 
 Kiba.run(acqjob)
+
+# write out only non-duplicates to Cspace CSV
+csacq = Kiba.parse do
+  @srcrows = 0
+  @outrows = 0
+
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/acquisitions_duplicates_flagged.tsv", csv_options: TSVOPT
+  # Ruby's CSV gives us "CSV::Row" but we want Hash
+  transform{ |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'n'
+
+  transform Delete::Fields, fields: %i[duplicate]
+
+  transform{ |r| @outrows += 1; r }
+  filename = 'data/cs/acquisitions.csv'
+  destination Kiba::Extend::Destinations::CSV,
+    filename: filename,
+    csv_options: CSVOPT
+  post_process do
+    puts "\n\nCSPACE ACQ RECORDS"
+    puts "#{@outrows} (of #{@srcrows})"
+    puts "file: #{filename}"
+  end
+end
+Kiba.run(csacq)
+
+# write out only duplicates to tsv
+dupeacq = Kiba.parse do
+  @srcrows = 0
+  @outrows = 0
+
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/acquisitions_duplicates_flagged.tsv", csv_options: TSVOPT
+  # Ruby's CSV gives us "CSV::Row" but we want Hash
+  transform{ |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'y'
+
+  transform Delete::Fields, fields: %i[duplicate]
+
+  transform{ |r| @outrows += 1; r }
+  filename = 'data/working/acquisitions_duplicates.tsv'
+  destination Kiba::Extend::Destinations::CSV,
+    filename: filename,
+    csv_options: TSVOPT
+  post_process do
+    puts "\n\nDUPLICATE ACQ RECORDS"
+    puts "#{@outrows} (of #{@srcrows})"
+    puts "file: #{filename}"
+  end
+end
+Kiba.run(dupeacq)

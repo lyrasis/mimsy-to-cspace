@@ -8,7 +8,7 @@ require 'facets/kernel/blank'
 
 TSVOPT = {headers: true, col_sep: "\t", header_converters: :symbol, converters: [:stripplus]}
 LOCCSVOPT = {headers: true, header_converters: :symbol, converters: [:stripplus]}
-MVDELIM = ';;;'
+MVDELIM = ';'
 DATADIR = File.expand_path('~/code/mimsy-to-cspace/data')
 LANGUAGES = {
   'eng' => 'English'

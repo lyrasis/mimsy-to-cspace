@@ -455,17 +455,7 @@ module Mimsy
       
       ## SECTION below adds column to flag duplicate terms
       transform Cspace::ConvertToID, source: :termDisplayName, target: :shortid
-      
-      transform do |row|
-        term = row.fetch(:shortid)
-        if @deduper.has_key?(term)
-          row[:duplicate] = 'y'
-        else
-          @deduper[term] = nil
-          row[:duplicate] = 'n'
-        end
-        row
-      end
+      transform Deduplicate::Flag, on_field: :shortid, in_field: :duplicate, using: @deduper
       ## END SECTION
 
       #  show_me!
