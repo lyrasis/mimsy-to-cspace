@@ -40,9 +40,11 @@ namesjob = Kiba.parse do
     lookup: @names,
     keycolumn: :link_id,
     fieldmap: {
-      :preferred_name => :preferred_name
+      :preferred_name => :preferred_name,
+      :individual => :individual
     }
-#  show_me!
+  
+  #show_me!
   transform{ |r| @outrows += 1; r }
   filename = 'data/working/acquisition_sources.tsv'
   destination Kiba::Extend::Destinations::CSV,
@@ -89,10 +91,28 @@ acqjob = Kiba.parse do
     lookup: @src,
     keycolumn: :akey,
     fieldmap: {
-      :acquisitionSource => :preferred_name,
+      :acquisitionSourcePerson => :preferred_name,
+    },
+    exclusion_criteria: {
+      :field_equal => [
+        ['mergerow::individual','value::N']
+      ]
     },
     delim: MVDELIM  
 
+  transform Merge::MultiRowLookup,
+    lookup: @src,
+    keycolumn: :akey,
+    fieldmap: {
+      :acquisitionSourceOrganization => :preferred_name,
+    },
+    exclusion_criteria: {
+      :field_equal => [
+        ['mergerow::individual','value::Y']
+      ]
+    },
+    delim: MVDELIM  
+  
   transform Merge::MultiRowLookup,
     lookup: @acq,
     keycolumn: :akey,
@@ -258,7 +278,7 @@ acqjob = Kiba.parse do
   transform Delete::Fields, fields: %i[akey status requested_by request_date legal_date total_requested
                                        external_file aiTransferDate]
 
-#  show_me!
+  show_me!
   
   transform{ |r| @outrows += 1; r }
   filename = 'data/working/acquisitions_duplicates_flagged.tsv'
