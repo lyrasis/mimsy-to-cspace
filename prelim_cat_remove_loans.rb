@@ -22,7 +22,9 @@ module Mimsy
         sep: ' ',
         delete_sources: false
 
-      transform FilterRows::FieldMatchRegexp, action: :reject, field: :id_number_cat,
+      transform FilterRows::FieldMatchRegexp,
+        action: :reject,
+        field: :id_number_cat,
         match: '(BM-ZPB|L-CB).* Loan$'
 
       #  show_me!

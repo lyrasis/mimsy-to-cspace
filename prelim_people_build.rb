@@ -2,6 +2,8 @@ require_relative 'config'
 
 module Mimsy
   module People
+    def self.setup
+      puts 'Running contacts_job'
     # conversion of people_contacts in a more CSpace friendly form for merging to mondo people table
     @contacts_job = Kiba.parse do
       source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/people_contacts.tsv", csv_options: TSVOPT
@@ -34,7 +36,7 @@ module Mimsy
       # extend Kiba::Common::DSLExtensions::ShowMe
       # show_me!
 
-      filename = 'data/working/people_contacts.tsv'
+      filename = "#{DATADIR}/working/people_contacts.tsv"
       destination Kiba::Extend::Destinations::CSV,
         filename: filename,
         csv_options: TSVOPT
@@ -42,9 +44,9 @@ module Mimsy
         puts "File generated in #{filename}"
       end
     end
+    Kiba.run(@contacts_job)
 
-    
-
+    puts 'Running people job'
     # Builds mondo people table from:
     # people, people_variations, people_contacts, acquisition_sources, disposal_sources,
     # items_people_sources, items_makers, source_details
@@ -105,11 +107,18 @@ module Mimsy
           :termSourceLocalNonPreferred => 'Mimsy export',
           :termSourceDetailNonPreferred => 'people_variation.csv/VARIATION'
         },
-        exclusion_criteria: {
-          :field_equal => {
-            :termDisplayName => :variation
-          }
-        },
+        conditions: {
+            exclude: {
+              field_equal: { fieldsets: [
+                {
+                  type: :any,
+                  matches: [
+                    ['row::termDisplayName', 'mergerow::variation']
+                  ]
+                }
+              ]}
+            }
+          },
         delim: MVDELIM
 
       # merge contact address info from people_contacts
@@ -155,9 +164,15 @@ module Mimsy
           :ac_termSourceLocalNonPreferred => 'Mimsy export',
           :ac_termSourceDetailNonPreferred => 'acquisition_sources.tsv/SOURCE'
         },
-        exclusion_criteria: {
-          :field_empty => [:source]
-        },
+        conditions: {
+            exclude: {
+              field_empty: { fieldsets: [
+                {
+                  fields: ['mergerow::source']
+                }
+              ]}
+            }
+          },
         delim: MVDELIM
 
       transform Merge::MultiRowLookup,
@@ -190,8 +205,14 @@ module Mimsy
           :disp_termSourceLocalNonPreferred => 'Mimsy export',
           :disp_termSourceDetailNonPreferred => 'disposal_sources.tsv/SOURCE'
         },
-        exclusion_criteria: {
-          :field_empty => [:source]
+        conditions: {
+          exclude: {
+            field_empty: { fieldsets: [
+              {
+                fields: ['mergerow::source']
+              }
+            ]}
+          }
         },
         delim: MVDELIM
 
@@ -225,8 +246,14 @@ module Mimsy
           :ip_termSourceLocalNonPreferred => 'Mimsy export',
           :ip_termSourceDetailNonPreferred => 'items_people_sources.tsv/SOURCE'
         },
-        exclusion_criteria: {
-          :field_empty => [:source]
+        conditions: {
+          exclude: {
+            field_empty: { fieldsets: [
+              {
+                fields: ['mergerow::source']
+              }
+            ]}
+          }
         },
         delim: MVDELIM
 
@@ -260,8 +287,14 @@ module Mimsy
           :im_termSourceLocalNonPreferred => 'Mimsy export',
           :im_termSourceDetailNonPreferred => 'items_makers.tsv/NAME'
         },
-        exclusion_criteria: {
-          :field_empty => [:name]
+        conditions: {
+          exclude: {
+            field_empty: { fieldsets: [
+              {
+                fields: ['mergerow::name']
+              }
+            ]}
+          }
         },
         delim: MVDELIM
 
@@ -303,8 +336,14 @@ module Mimsy
           :sd_var_termSourceLocalNonPreferred => 'Mimsy export',
           :sd_var_termSourceDetailNonPreferred => 'source_details.tsv/VARIATION'
         },
-        exclusion_criteria: {
-          :field_empty => [:variation]
+        conditions: {
+          exclude: {
+            field_empty: { fieldsets: [
+              {
+                fields: ['mergerow::variation']
+              }
+            ]}
+          }
         },
         delim: MVDELIM
 
@@ -319,8 +358,14 @@ module Mimsy
           :sd_pref_termSourceLocalNonPreferred => 'Mimsy export',
           :sd_pref_termSourceDetailNonPreferred => 'source_details.tsv/PREFERRED_NAME'
         },
-        exclusion_criteria: {
-          :field_empty => [:preferred_name]
+        conditions: {
+          exclude: {
+            field_empty: { fieldsets: [
+              {
+                fields: ['mergerow::preferred_name']
+              }
+            ]}
+          }
         },
         delim: MVDELIM
 
@@ -471,9 +516,9 @@ module Mimsy
         puts "File generated in #{filename}"
       end
     end
-
+    Kiba.run(@people_job)
     
-
+    puts 'Running duplicate job'
     @duplicate_job = Kiba.parse do
       source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/people.tsv", csv_options: TSVOPT
       # Ruby's CSV gives us "CSV::Row" but we want Hash
@@ -491,12 +536,7 @@ module Mimsy
         puts "File generated in #{filename}"
       end
     end
-
-    def self.setup
-      Kiba.run(@contacts_job)
-      Kiba.run(@people_job)
-      Kiba.run(@duplicate_job)
+    Kiba.run(@duplicate_job)
     end
-
   end
 end

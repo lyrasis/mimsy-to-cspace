@@ -1,4 +1,4 @@
-require_relative 'config'
+ require_relative 'config'
 
 # creates a copy of acquisitions.tsv that we can use to merge in reshaped data
 wrkacq = Kiba.parse do
@@ -29,8 +29,8 @@ namesjob = Kiba.parse do
   @srcrows = 0
   @outrows = 0
   @names = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/people.tsv",
-                                       csvopt: TSVOPT,
-                                       keycolumn: :link_id)
+                                    csvopt: TSVOPT,
+                                    keycolumn: :link_id)
 
   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/acquisition_sources.tsv", csv_options: TSVOPT
   transform { |r| r.to_h }
@@ -70,11 +70,11 @@ acqjob = Kiba.parse do
                                        csvopt: TSVOPT,
                                        keycolumn: :akey)
   @acq = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/acquisitions.tsv",
-                                       csvopt: TSVOPT,
-                                       keycolumn: :akey)
+                                  csvopt: TSVOPT,
+                                  keycolumn: :akey)
   @src = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/acquisition_sources.tsv",
-                                       csvopt: TSVOPT,
-                                       keycolumn: :akey)
+                                  csvopt: TSVOPT,
+                                  keycolumn: :akey)
 
   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/acquisitions.tsv", csv_options: TSVOPT
   # Ruby's CSV gives us "CSV::Row" but we want Hash
@@ -83,7 +83,6 @@ acqjob = Kiba.parse do
 
   # ref number is required
   transform FilterRows::FieldPopulated, action: :keep, field: :ref_number
-
   # get rid of acq fields we are going to merge in from copy
   transform Delete::Fields, fields: %i[status status_date requested_by request_date legal_date legal_date_display]
 
@@ -93,10 +92,14 @@ acqjob = Kiba.parse do
     fieldmap: {
       :acquisitionSourcePerson => :preferred_name,
     },
-    exclusion_criteria: {
-      :field_equal => [
-        ['mergerow::individual','value::N']
-      ]
+    conditions: {
+      include: {
+        :field_equal => { fieldsets: [
+          {matches: [
+            ['mergerow::individual','value::Y']
+          ]}
+        ]}
+      }
     },
     delim: MVDELIM  
 
@@ -106,10 +109,14 @@ acqjob = Kiba.parse do
     fieldmap: {
       :acquisitionSourceOrganization => :preferred_name,
     },
-    exclusion_criteria: {
-      :field_equal => [
-        ['mergerow::individual','value::Y']
-      ]
+    conditions: {
+      include: {
+        :field_equal => { fieldsets: [
+          {matches: [
+            ['mergerow::individual','value::N']
+          ]}
+        ]}
+      }
     },
     delim: MVDELIM  
   
@@ -252,12 +259,19 @@ acqjob = Kiba.parse do
     target: :acquisitionMethod,
     value: 'gift',
     conditions: {
-      :fields_empty => %i[acquisitionMethod],
-      :fields_match_regexp => {
-        :acquisitionReason => [
-          '^[Gg]ift$',
-          '^[Dd]onation$'
+      include: {
+        field_empty: {
+          fieldsets: [
+            {fields: %w[row::acquisitionMethod]}
           ]
+        },
+        field_equal: {
+          fieldsets: [
+            {matches: [
+              %w[row::acquisitionReason revalue::[Gg]ift]
+            ]}
+          ]
+        }
       }
     }
 
@@ -265,11 +279,19 @@ acqjob = Kiba.parse do
     target: :acquisitionMethod,
     value: 'transfer',
     conditions: {
-      :fields_empty => %i[acquisitionMethod],
-      :fields_match_regexp => {
-        :acquisitionReason => [
-          '^[Tt]ransfer$'
-        ]
+      include: {
+        field_empty: {
+          fieldsets: [
+            {fields: %w[row::acquisitionMethod]}
+          ]
+        },
+        field_equal: {
+          fieldsets: [
+            {matches: [
+              %w[row::acquisitionReason revalue::[Tt]ransfer]
+            ]}
+          ]
+        }
       }
     }
 
