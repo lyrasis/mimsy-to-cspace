@@ -256,8 +256,7 @@ acqjob = Kiba.parse do
   transform Rename::Field, from: :total_offer_price, to: :groupPurchasePriceValue
 
   transform Merge::ConstantValueConditional,
-    target: :acquisitionMethod,
-    value: 'gift',
+    fieldmap: {acquisitionMethod: 'gift'},
     conditions: {
       include: {
         field_empty: {
@@ -276,8 +275,7 @@ acqjob = Kiba.parse do
     }
 
   transform Merge::ConstantValueConditional,
-    target: :acquisitionMethod,
-    value: 'transfer',
+    fieldmap: {acquisitionMethod: 'transfer'},
     conditions: {
       include: {
         field_empty: {

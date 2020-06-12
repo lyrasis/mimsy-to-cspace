@@ -67,7 +67,11 @@ catjob = Kiba.parse do
     conditions: {
       include: {
         field_equal: { fieldsets: [
-          {matches: ['row::loan_allowed', 'value::N']}
+          {
+            matches: [
+              ['row::loan_allowed', 'value::N']
+            ]
+          }
         ]}
       }
     }
