@@ -18,3 +18,15 @@ GENDER = {
   'M' => 'male',
   'N' => nil
 }
+INVSTATUS = {
+  'ACCESSION' => 'unprocessed',
+  'ACCESSION DETAIL' => 'processed'
+}
+PRIORATTR = {
+  'N' => '',
+  'Y' => ' (prior attribution)'
+}
+PUBLISH = {
+  'Y' => 'All',
+  'N' => 'None'
+}

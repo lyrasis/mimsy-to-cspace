@@ -1,6 +1,65 @@
 require_relative 'config'
+require_relative 'prelim_cat_remove_loans'
 
-# create cspace acquisitions records
+Mimsy::Cat.setup
+
+# creates working copy of items_makers with preferred_name & individual columns merged in from people,
+#  role column inserted based on relationship, affiliation, and prior attribution
+namesjob = Kiba.parse do
+  extend Kiba::Common::DSLExtensions::ShowMe
+  @srcrows = 0
+  @outrows = 0
+  @names = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/people.tsv",
+                                    csvopt: TSVOPT,
+                                    keycolumn: :link_id)
+
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/items_makers.tsv", csv_options: TSVOPT
+  transform { |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform Merge::MultiRowLookup,
+    lookup: @names,
+    keycolumn: :link_id,
+    fieldmap: {
+      :preferred_name => :preferred_name,
+      :individual => :individual
+    }
+
+  # where affiliation = Maker, relationship is blank --- collapse into one downcased column
+  transform Rename::Field, from: :relationship, to: :role
+  transform CombineValues::FromFieldsWithDelimiter,
+    sources: %i[role affiliation],
+    target: :role,
+    sep: ''
+  transform Clean::DowncaseFieldValues, fields: [:role]
+
+  # turn "maker" into "maker (prior attribution)" if prior_attribution column = Y
+  transform Replace::FieldValueWithStaticMapping,
+    source: :prior_attribution,
+    target: :prior_attribution_mapped,
+    mapping: PRIORATTR,
+    delete_source: false
+  transform CombineValues::FromFieldsWithDelimiter,
+    sources: %i[role prior_attribution_mapped],
+    target: :role,
+    sep: ''
+
+  #show_me!
+  transform{ |r| @outrows += 1; r }
+  filename = "#{DATADIR}/working/items_makers.tsv"
+  destination Kiba::Extend::Destinations::CSV,
+    filename: filename,
+    csv_options: TSVOPT
+  post_process do
+    puts "\n\nITEMS_MAKERS COPY"
+    puts "#{@outrows} (of #{@srcrows})"
+    puts "file: #{filename}"
+  end
+end
+Kiba.run(namesjob)
+
+
+# create cspace collectionobject records
 catjob = Kiba.parse do
   extend Kiba::Common::DSLExtensions::ShowMe
   @deduper = {}
@@ -11,58 +70,213 @@ catjob = Kiba.parse do
   @acqitems = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/acquisition_items.tsv",
                                        csvopt: TSVOPT,
                                        keycolumn: :m_id)
+  @makers = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/items_makers.tsv",
+                                  csvopt: TSVOPT,
+                                  keycolumn: :mkey)
+  @names = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/people.tsv",
+                                  csvopt: TSVOPT,
+                                  keycolumn: :preferred_name)
+  @test = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/co_select.tsv",
+                                  csvopt: TSVOPT,
+                                  keycolumn: :mkey)
 
-  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/catalogue.tsv", csv_options: TSVOPT
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/catalogue.tsv", csv_options: TSVOPT
   # Ruby's CSV gives us "CSV::Row" but we want Hash
   transform { |r| r.to_h }
   transform{ |r| @srcrows += 1; r }
 
+#  transform FilterRows::FieldEqualTo, action: :keep, field: :mkey, value: '1113'
+  # SECTION BELOW selects only listed rows for testing
+  transform Merge::MultiRowLookup,
+    lookup: @test,
+    keycolumn: :mkey,
+    fieldmap: {
+      :keep => :mkey
+    }
+  transform FilterRows::FieldPopulated, action: :keep, field: :keep
+  transform Delete::Fields, fields: %i[keep]
+  # END SECTION
+
+  
   # id_number is required
   transform FilterRows::FieldPopulated, action: :keep, field: :id_number
 
+
+  # SECTION BELOW merges in acquisition_item data
   # transform Merge::MultiRowLookup,
-  #   lookup: @acq,
-  #   keycolumn: :akey,
+  #   lookup: @acqitems,
+  #   keycolumn: :mkey,
   #   fieldmap: {
-  #     :approvalStatus => :status,
-  #     :approvalDate => :status_date
+  #     :numberValue => :id_number,
   #   },
   #   constantmap: {
-  #     :approvalIndividual => ''
+  #     :numberType => 'acquisition item number'
+  #   },
+  #   conditions: {
+  #     exclude: {
+  #       :field_equal => { fieldsets: [
+  #         {matches: [
+  #           ['mergerow::id_number','row::id_number']
+  #         ]}
+  #       ]}
+  #     }
   #   },
   #   delim: MVDELIM
+  transform Merge::MultiRowLookup,
+    lookup: @acqitems,
+    keycolumn: :mkey,
+    fieldmap: {
+      :assocStructuredDateGroup => :transfer_date,
+    },
+    constantmap: {
+      :assocDateType => 'acquisition transfer date'
+    },
+    delim: MVDELIM
+  # END SECTION
 
+  # SECTION BELOW merges in typed objectProductionPerson or objectProductionOrganization
+  #  values and associated roles
+  transform Merge::MultiRowLookup,
+    lookup: @names,
+    keycolumn: :maker,
+    fieldmap: {
+      :makerPerson => :preferred_name,
+    },
+    constantmap: {
+      :makerPersonRole => 'maker'
+    },
+    conditions: {
+      include: {
+        :field_equal => { fieldsets: [
+          {matches: [
+            ['mergerow::individual','value::Y']
+          ]}
+        ]}
+      }
+    },
+    delim: MVDELIM  
+
+  transform Merge::MultiRowLookup,
+    lookup: @names,
+    keycolumn: :maker,
+    fieldmap: {
+      :makerOrganization => :preferred_name,
+    },
+    constantmap: {
+      :makerOrganizationRole => 'maker'
+    },
+    conditions: {
+      include: {
+        :field_equal => { fieldsets: [
+          {matches: [
+            ['mergerow::individual','value::N']
+          ]}
+        ]}
+      }
+    },
+    delim: MVDELIM
+
+    transform Merge::MultiRowLookup,
+    lookup: @makers,
+    keycolumn: :mkey,
+    fieldmap: {
+      :objectProductionPerson => :preferred_name,
+      :objectProductionPersonRole => :role
+    },
+    conditions: {
+      include: {
+        :field_equal => { fieldsets: [
+          {matches: [
+            ['mergerow::individual','value::Y']
+          ]}
+        ]}
+      }
+    },
+    delim: MVDELIM  
+
+  transform Merge::MultiRowLookup,
+    lookup: @makers,
+    keycolumn: :mkey,
+    fieldmap: {
+      :objectProductionOrganization => :preferred_name,
+      :objectProductionOrganizationRole => :role
+    },
+    conditions: {
+      include: {
+        :field_equal => { fieldsets: [
+          {matches: [
+            ['mergerow::individual','value::N']
+          ]}
+        ]}
+      }
+    },
+    delim: MVDELIM
+
+  transform CombineValues::AcrossFieldGroup,
+    fieldmap: {
+      objectProductionPerson: %i[makerPerson objectProductionPerson],
+      objectProductionPersonRole: %i[makerPersonRole objectProductionPersonRole]
+    },
+    sep: MVDELIM
+  transform Deduplicate::GroupedFieldValues,
+    on_field: :objectProductionPerson,
+    grouped_fields: %i[objectProductionPersonRole],
+    sep: MVDELIM
+  
+  transform CombineValues::AcrossFieldGroup,
+    fieldmap: {
+      objectProductionOrganization: %i[makerOrganization objectProductionOrganization],
+      objectProductionOrganizationRole: %i[makerOrganizationRole objectProductionOrganizationRole]
+    },
+    sep: MVDELIM
+  transform Deduplicate::GroupedFieldValues,
+    on_field: :objectProductionOrganization,
+    grouped_fields: %i[objectProductionOrganizationRole],
+    sep: MVDELIM
+  #END SECTION
+  
   transform Rename::Field, from: :id_number, to: :objectNumber
   transform Rename::Field, from: :description, to: :briefDescription
-  transform Rename::Field, from: :item_name, to: :objectName
 
-    transform Merge::ConstantValueConditional,
-    target: :objectNameLanguage,
-    value: 'English',
+  transform Rename::Field, from: :item_name, to: :objectName
+  transform Merge::ConstantValueConditional,
+    fieldmap: {objectNameLanguage: 'English'},
     conditions: {
-      :fields_populated => %i[objectName]
+      exclude: {
+        field_empty: {
+          fieldsets: [
+            {fields: %w[row::objectName]}
+          ]
+        }
+      }
     }
 
   transform Rename::Field, from: :item_count, to: :numberOfObjects
   transform Rename::Field, from: :materials, to: :material
   transform Rename::Field, from: :date_collected, to: :fieldCollectionDateGroup
-  transform Rename::Field, from: :place_collected, to: :fieldCollectionPlace
-
+  transform Rename::Field, from: :place_collected, to: :fieldCollectionPlaceLocal
+  transform Rename::Field, from: :place_made, to: :objectProductionPlaceLocal
+  transform Rename::Field, from: :culture, to: :objectProductionPeople
+  transform Rename::Field, from: :date_made, to: :objectProductionDateGroup
+  
   transform Rename::Field, from: :note, to: :comment1
   transform Rename::Field, from: :option4, to: :comment2
+  transform Clean::RegexpFindReplaceFieldVals,
+    fields: %i[comment1 comment2],
+    find: ';',
+    replace: ', '
   transform CombineValues::FromFieldsWithDelimiter,
     sources: %i[comment1 comment2],
     target: :comment,
-    sep: MVDELIM
+    sep: ' --- '
 
-  transform Rename::Field, from: :credit_line, to: :collection
+  transform Rename::Field, from: :credit_line, to: :namedCollection
   transform Rename::Field, from: :measurements, to: :dimensionSummary
 
-  transform Rename::Field, from: :loan_allowed, to: :limitationType
   transform Merge::ConstantValueConditional,
     fieldmap: {
-      :limitationType => 'lending',
-      :limitationLevel => 'restriction'
+      limitationType: 'lending',
+      limitationLevel: 'restriction'
     },
     conditions: {
       include: {
@@ -76,17 +290,95 @@ catjob = Kiba.parse do
       }
     }
 
+  transform Merge::ConstantValueConditional,
+    fieldmap: {
+      collection: 'permanent-collection'
+    },
+    conditions: {
+      include: {
+        field_equal: { fieldsets: [
+          {
+            matches: [
+              ['row::legal_status', 'value::PERMANENT COLLECTION']
+            ]
+          }
+        ]}
+      }
+    }
+
+  transform Replace::FieldValueWithStaticMapping,
+    source: :publish,
+    target: :publishTo,
+    mapping: PUBLISH
+
+  # SECTION BELOW cleans up category1 values
+  transform Clean::RegexpFindReplaceFieldVals,
+    fields: %i[category1],
+    find: 'ACC+ESS+ION',
+    replace: 'ACCESSION'
+
+  transform Clean::RegexpFindReplaceFieldVals,
+    fields: %i[category1],
+    find: 'DETAL|DETAIl',
+    replace: 'DETAIL'
   
+    transform Merge::ConstantValueConditional,
+    fieldmap: {
+      objectName: 'Manuscript',
+      objectNameLanguage: 'English'
+    },
+    conditions: {
+      include: {
+        field_equal: { fieldsets: [
+          {
+            matches: [
+              ['row::category1', 'value::Manuscript']
+            ]
+          }
+        ]}
+      }
+    }
+  transform Delete::FieldValueMatchingRegexp,
+    fields: [:category1],
+    match: '^Manuscript$'
+  transform Delete::FieldValueMatchingRegexp,
+    fields: [:category1],
+    match: '^Gelatin silver print$'
+
+  transform Merge::ConstantValueConditional,
+    fieldmap: {
+      category1: 'ACCESSION DETAIL'
+    },
+    conditions: {
+      include: {
+        field_equal: { fieldsets: [
+          {
+            matches: [
+              ['row::category1', 'revalue::\d{2}-\d{3}']
+            ]
+          }
+        ]}
+      }
+    }
+
+  transform Replace::FieldValueWithStaticMapping,
+    source: :category1,
+    target: :inventoryStatus,
+    mapping: INVSTATUS,
+    fallback_val: :nil
+
+
+  # END SECTION
 
   transform Deduplicate::Flag, on_field: :objectNumber, in_field: :duplicate, using: @deduper
 
-#  transform Delete::Fields, fields: %i[akey status requested_by request_date legal_date total_requested
-#                                       external_file aiTransferDate]
+  transform Delete::Fields, fields: %i[mkey category1 legal_status id_number_cat maker offsite system_count parent_key broader_text whole_part
+                                       home_location loan_allowed offsite location location_date location_levels]
 
-  show_me!
+  #show_me!
   
   transform{ |r| @outrows += 1; r }
-  filename = 'data/working/acquisitions_duplicates_flagged.tsv'
+  filename = "#{DATADIR}/working/collectionobjects_duplicates_flagged.tsv"
   destination Kiba::Extend::Destinations::CSV,
     filename: filename,
     initial_headers: %i[objectNumber],
@@ -99,3 +391,30 @@ catjob = Kiba.parse do
   end
 end
 Kiba.run(catjob)
+
+uniqcatjob = Kiba.parse do
+  extend Kiba::Common::DSLExtensions::ShowMe
+  @srcrows = 0
+  @outrows = 0
+
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/collectionobjects_duplicates_flagged.tsv", csv_options: TSVOPT
+  transform { |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'n'
+
+  transform Delete::Fields, fields: %i[duplicate]
+
+  show_me!
+  transform{ |r| @outrows += 1; r }
+  filename = "#{DATADIR}/cs/collectionobjects.csv"
+  destination Kiba::Extend::Destinations::CSV,
+    filename: filename,
+    csv_options: CSVOPT
+  post_process do
+    puts "\n\nUNIQUE OBJECT RECORDS"
+    puts "#{@outrows} (of #{@srcrows})"
+    puts "file: #{filename}"
+  end
+end
+Kiba.run(uniqcatjob)

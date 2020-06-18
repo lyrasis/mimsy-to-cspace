@@ -2,7 +2,8 @@ require_relative 'config'
 
 module Mimsy
   module Cat
-    @remove_loans = Kiba.parse do
+    def self.setup
+      @remove_loans = Kiba.parse do
       extend Kiba::Common::DSLExtensions::ShowMe
       
       @srcrows = 0
@@ -41,7 +42,6 @@ module Mimsy
       end
     end
 
-    def self.setup
       # removes loan rows as per
       # https://3.basecamp.com/3410311/buckets/16953827/todos/2708290043
       Kiba.run(@remove_loans)
