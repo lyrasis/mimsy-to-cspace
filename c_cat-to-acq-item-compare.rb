@@ -31,7 +31,7 @@ cat_no_acq_items = Kiba.parse do
   
   transform{ |r| @outrows += 1; r }
   
-  filename = "#{DATADIR}/working/cat_no_acq_items.tsv"
+  filename = "#{DATADIR}/reports/cat_no_acq_items.tsv"
   destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
   
   post_process do
@@ -70,7 +70,7 @@ cat_one_acq_items = Kiba.parse do
   
   transform{ |r| @outrows += 1; r }
   
-  filename = "#{DATADIR}/working/cat_one_acq_items.tsv"
+  filename = "#{DATADIR}/reports_ok/cat_one_acq_items.tsv"
   destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
   
   post_process do
@@ -109,7 +109,7 @@ cat_multiple_acq_items = Kiba.parse do
   
   transform{ |r| @outrows += 1; r }
   
-  filename = "#{DATADIR}/working/cat_multiple_acq_items.tsv"
+  filename = "#{DATADIR}/reports/cat_multiple_acq_items.tsv"
   destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
   
   post_process do

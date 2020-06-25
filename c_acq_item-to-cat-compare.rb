@@ -14,7 +14,7 @@ acq_items_no_cat = Kiba.parse do
   transform FilterRows::FieldPopulated, action: :reject, field: :m_id
   transform{ |r| @outrows += 1; r }
   
-  filename = "#{DATADIR}/working/acq_items_no_cat.tsv"
+  filename = "#{DATADIR}/reports_ok/acq_items_no_cat.tsv"
   destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
   
   post_process do
@@ -61,7 +61,7 @@ acq_items_multiple_cat = Kiba.parse do
 
   transform{ |r| @outrows += 1; r }
   
-  filename = "#{DATADIR}/working/acq_items_multiple_cat.tsv"
+  filename = "#{DATADIR}/reports/acq_items_multiple_cat.tsv"
   destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
   
   post_process do
@@ -107,7 +107,7 @@ acq_items_one_cat = Kiba.parse do
 
   transform{ |r| @outrows += 1; r }
   
-  filename = "#{DATADIR}/working/acq_items_one_cat.tsv"
+  filename = "#{DATADIR}/reports_ok/acq_items_one_cat.tsv"
   destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
   
   post_process do

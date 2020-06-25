@@ -24,7 +24,7 @@ acq_no_acq_items = Kiba.parse do
 
   transform{ |r| @outrows += 1; r }
   
-  filename = "#{DATADIR}/working/acq_no_acq_items.tsv"
+  filename = "#{DATADIR}/reports/acq_no_acq_items.tsv"
   destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
   
   post_process do
@@ -60,7 +60,7 @@ acq_items_no_acq = Kiba.parse do
 
   transform{ |r| @outrows += 1; r }
   
-  filename = "#{DATADIR}/working/acq_items_no_acq.tsv"
+  filename = "#{DATADIR}/reports/acq_items_no_acq.tsv"
   destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
   
   post_process do
@@ -96,7 +96,7 @@ acq_items_one_acq = Kiba.parse do
 
   transform{ |r| @outrows += 1; r }
   
-  filename = "#{DATADIR}/working/acq_items_one_acq.tsv"
+  filename = "#{DATADIR}/reports_ok/acq_items_one_acq.tsv"
   destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
   
   post_process do
@@ -131,7 +131,7 @@ acq_items_multiple_acq = Kiba.parse do
 
   transform{ |r| @outrows += 1; r }
   
-  filename = "#{DATADIR}/working/acq_items_multiple_acq.tsv"
+  filename = "#{DATADIR}/reports/acq_items_multiple_acq.tsv"
   destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
   
   post_process do

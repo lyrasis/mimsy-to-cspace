@@ -528,7 +528,7 @@ module Mimsy
 
       transform Delete::Fields, fields: [:duplicate]
 
-      filename = 'data/working/DUPLICATE_people.tsv'
+      filename = 'data/reports/DUPLICATE_people.tsv'
       destination Kiba::Extend::Destinations::CSV,
         filename: filename,
         csv_options: TSVOPT

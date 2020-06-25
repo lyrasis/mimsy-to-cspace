@@ -1,10 +1,10 @@
 GIT
   remote: git://github.com/lyrasis/kiba-extend.git
-  revision: d7da4b4d0d7ad3ad1304730db8a10b567e6b219f
+  revision: aae4e62755b8dcada05190b7e05e3f3b1c61d103
   branch: master
   specs:
     kiba-extend (0.1.0)
-      kiba (>= 2.0.0)
+      kiba (>= 3.0.0)
       kiba-common (>= 0.9.0)
       xxhash
 
@@ -12,11 +12,11 @@ GEM
   remote: https://rubygems.org/
   specs:
     awesome_print (1.8.0)
-    coderay (1.1.2)
+    coderay (1.1.3)
     facets (3.1.0)
-    kiba (2.0.0)
-    kiba-common (0.9.0)
-      kiba (>= 1.0.0, < 3)
+    kiba (3.0.0)
+    kiba-common (1.0.0)
+      kiba (>= 1.0.0, < 4)
     method_source (1.0.0)
     pry (0.13.1)
       coderay (~> 1.1)
