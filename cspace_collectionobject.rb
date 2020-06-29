@@ -234,16 +234,16 @@ catjob = Kiba.parse do
 
 #  transform FilterRows::FieldEqualTo, action: :keep, field: :mkey, value: '1113'
 
-  # # SECTION BELOW selects only listed rows for testing
-  # transform Merge::MultiRowLookup,
-  #   lookup: @test,
-  #   keycolumn: :mkey,
-  #   fieldmap: {
-  #     :keep => :mkey
-  #   }
-  # transform FilterRows::FieldPopulated, action: :keep, field: :keep
-  # transform Delete::Fields, fields: %i[keep]
-  # # END SECTION
+  # SECTION BELOW selects only listed rows for testing
+  transform Merge::MultiRowLookup,
+    lookup: @test,
+    keycolumn: :mkey,
+    fieldmap: {
+      :keep => :mkey
+    }
+  transform FilterRows::FieldPopulated, action: :keep, field: :keep
+  transform Delete::Fields, fields: %i[keep]
+  # END SECTION
 
   
   # id_number is required
