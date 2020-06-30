@@ -30,3 +30,11 @@ PUBLISH = {
   'Y' => 'All',
   'N' => 'None'
 }
+REPRO = {
+  'Y' => 'Reproduction allowed.',
+  'N' => 'Reproduction not allowed.'
+}
+MEDIATYPE = {
+  'IMAGE' => 'still_image',
+  'DOCUMENT' => 'document'
+}
