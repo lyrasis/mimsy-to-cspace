@@ -27,8 +27,7 @@ module Mimsy
         action: :reject,
         field: :id_number_cat,
         match: '(BM-ZPB|L-CB).* Loan$'
-
-      #  show_me!
+      #show_me!
       
       transform{ |r| @outrows += 1; r }
       
