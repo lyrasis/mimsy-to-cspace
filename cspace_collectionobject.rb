@@ -1,7 +1,9 @@
 require_relative 'config'
 require_relative 'prelim_cat_remove_loans'
+require_relative 'prelim_measurement_prepare'
 
-Mimsy::Cat.setup
+#Mimsy::Cat.setup
+#Mimsy::Measurements.setup
 
 # creates working copy of items_makers with preferred_name & individual columns merged in from people,
 #  role column inserted based on relationship, affiliation, and prior attribution
@@ -223,6 +225,9 @@ catjob = Kiba.parse do
   @names = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/people.tsv",
                                   csvopt: TSVOPT,
                                   keycolumn: :preferred_name)
+  @measure = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/measurements_groups.tsv",
+                                  csvopt: TSVOPT,
+                                  keycolumn: :mkey)
   @test = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/co_select.tsv",
                                   csvopt: TSVOPT,
                                   keycolumn: :mkey)
@@ -249,27 +254,6 @@ catjob = Kiba.parse do
   # id_number is required
   transform FilterRows::FieldPopulated, action: :keep, field: :id_number
 
-
-  # SECTION BELOW merges in acquisition_item data
-  # transform Merge::MultiRowLookup,
-  #   lookup: @acqitems,
-  #   keycolumn: :mkey,
-  #   fieldmap: {
-  #     :numberValue => :id_number,
-  #   },
-  #   constantmap: {
-  #     :numberType => 'acquisition item number'
-  #   },
-  #   conditions: {
-  #     exclude: {
-  #       :field_equal => { fieldsets: [
-  #         {matches: [
-  #           ['mergerow::id_number','row::id_number']
-  #         ]}
-  #       ]}
-  #     }
-  #   },
-  #   delim: MVDELIM
   transform Merge::MultiRowLookup,
     lookup: @acqitems,
     keycolumn: :mkey,
@@ -324,7 +308,7 @@ catjob = Kiba.parse do
     },
     delim: MVDELIM
 
-    transform Merge::MultiRowLookup,
+  transform Merge::MultiRowLookup,
     lookup: @makers,
     keycolumn: :mkey,
     fieldmap: {
@@ -371,12 +355,12 @@ catjob = Kiba.parse do
     grouped_fields: %i[objectProductionPersonRole],
     sep: MVDELIM
   
-  transform CombineValues::AcrossFieldGroup,
-    fieldmap: {
-      objectProductionOrganization: %i[makerOrganization objectProductionOrganization],
-      objectProductionOrganizationRole: %i[makerOrganizationRole objectProductionOrganizationRole]
-    },
-    sep: MVDELIM
+   transform CombineValues::AcrossFieldGroup,
+     fieldmap: {
+       objectProductionOrganization: %i[makerOrganization objectProductionOrganization],
+       objectProductionOrganizationRole: %i[makerOrganizationRole objectProductionOrganizationRole]
+     },
+     sep: MVDELIM
   transform Deduplicate::GroupedFieldValues,
     on_field: :objectProductionOrganization,
     grouped_fields: %i[objectProductionOrganizationRole],
@@ -419,7 +403,38 @@ catjob = Kiba.parse do
     sep: ' --- '
 
   transform Rename::Field, from: :credit_line, to: :namedCollection
+
+  transform Merge::MultiRowLookup,
+    lookup: @measure,
+    keycolumn: :mkey,
+    fieldmap: {
+      gDimensionSummary: :display,
+      gValue: :value,
+      gDimension: :dimension,
+      gMeasurementUnit: :measurementunit
+    }
   transform Rename::Field, from: :measurements, to: :dimensionSummary
+
+  transform Clean::RegexpFindReplaceFieldVals,
+    fields: %i[dimensionSummary],
+    find: ';',
+    replace: ','
+
+  transform do |row|
+    gd = row.fetch(:gDimensionSummary, nil)
+    d = row.fetch(:dimensionSummary, nil)
+    if gd.nil?
+      row[:gDimensionSummary] = row[:dimensionSummary] if d
+    end
+    row
+  end
+
+  transform Delete::Fields, fields: %i[dimensionSummary]
+
+  transform Rename::Field, from: :gDimensionSummary, to: :dimensionSummary
+  transform Rename::Field, from: :gValue, to: :value
+  transform Rename::Field, from: :gDimension, to: :dimension
+  transform Rename::Field, from: :gMeasurementUnit, to: :measurementUnit
 
   transform Merge::ConstantValueConditional,
     fieldmap: {

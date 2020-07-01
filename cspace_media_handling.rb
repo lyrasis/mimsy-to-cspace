@@ -89,7 +89,6 @@ mediajob = Kiba.parse do
     row
   end
     
-
   transform Delete::FieldValueIfEqualsOtherField,
     delete: :media,
     if_equal_to: :filename
