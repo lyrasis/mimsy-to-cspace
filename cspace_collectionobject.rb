@@ -2,10 +2,12 @@ require_relative 'config'
 require_relative 'prelim_cat'
 require_relative 'prelim_measurement_prepare'
 require_relative 'prelim_inscription'
+require_relative 'prelim_subject'
 
 Mimsy::Cat.setup
 Mimsy::Measurements.setup
 Mimsy::Inscription.setup
+Mimsy::Subject.setup
 
 # creates working copy of items_makers with preferred_name & individual columns merged in from people,
 #  role column inserted based on relationship, affiliation, and prior attribution
@@ -233,6 +235,9 @@ catjob = Kiba.parse do
   @inscription = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/inscription.tsv",
                                   csvopt: TSVOPT,
                                   keycolumn: :mkey)
+  @subjects = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/subject_item_lookup.tsv",
+                                          csvopt: TSVOPT,
+                                          keycolumn: :mkey)
 
   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/catalogue.tsv", csv_options: TSVOPT
   # Ruby's CSV gives us "CSV::Row" but we want Hash
@@ -417,7 +422,15 @@ catjob = Kiba.parse do
       inscriptionContentPosition: :inscriptioncontentposition,
       inscriptionContentInterpretation: :inscriptioncontentinterpretation
     }
-  
+
+  transform Merge::MultiRowLookup,
+    lookup: @subjects,
+    keycolumn: :mkey,
+    fieldmap: {
+      contentConcept: :migratingsub
+    },
+    delim: MVDELIM
+
   transform Clean::RegexpFindReplaceFieldVals,
     fields: %i[dimensionSummary],
     find: ';',

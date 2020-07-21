@@ -1,9 +1,10 @@
 GIT
   remote: git://github.com/lyrasis/kiba-extend.git
-  revision: 0e8d6e5981c55a45477f68c39f3c4deeb1376b8b
+  revision: 944aa0d9c439381ff40473cf982f1e159b28f870
   branch: master
   specs:
-    kiba-extend (0.1.0)
+    kiba-extend (0.1.1)
+      activesupport
       kiba (>= 3.0.0)
       kiba-common (>= 0.9.0)
       xxhash
@@ -11,17 +12,31 @@ GIT
 GEM
   remote: https://rubygems.org/
   specs:
+    activesupport (6.0.3.2)
+      concurrent-ruby (~> 1.0, >= 1.0.2)
+      i18n (>= 0.7, < 2)
+      minitest (~> 5.1)
+      tzinfo (~> 1.1)
+      zeitwerk (~> 2.2, >= 2.2.2)
     awesome_print (1.8.0)
     coderay (1.1.3)
+    concurrent-ruby (1.1.6)
     facets (3.1.0)
+    i18n (1.8.4)
+      concurrent-ruby (~> 1.0)
     kiba (3.0.0)
     kiba-common (1.0.0)
       kiba (>= 1.0.0, < 4)
     method_source (1.0.0)
+    minitest (5.14.1)
     pry (0.13.1)
       coderay (~> 1.1)
       method_source (~> 1.0)
+    thread_safe (0.3.6)
+    tzinfo (1.2.7)
+      thread_safe (~> 0.1)
     xxhash (0.4.0)
+    zeitwerk (2.4.0)
 
 PLATFORMS
   ruby
@@ -31,7 +46,7 @@ DEPENDENCIES
   facets
   kiba
   kiba-common
-  kiba-extend!
+  kiba-extend (= 0.1.1)!
   pry
 
 BUNDLED WITH

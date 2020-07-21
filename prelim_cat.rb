@@ -56,16 +56,16 @@ module Mimsy
         transform{ |r| r.to_h }
         transform{ |r| @srcrows += 1; r }
 
-        # # SECTION BELOW selects only listed rows for testing
-        # transform Merge::MultiRowLookup,
-        #   lookup: @test,
-        #   keycolumn: :mkey,
-        #   fieldmap: {
-        #     :keep => :mkey
-        #   }
-        # transform FilterRows::FieldPopulated, action: :keep, field: :keep
-        # transform Delete::Fields, fields: %i[keep]
-        # # END
+        # SECTION BELOW selects only listed rows for testing
+        transform Merge::MultiRowLookup,
+          lookup: @test,
+          keycolumn: :mkey,
+          fieldmap: {
+            :keep => :mkey
+          }
+        transform FilterRows::FieldPopulated, action: :keep, field: :keep
+        transform Delete::Fields, fields: %i[keep]
+        # END
         
         #show_me!
         transform{ |r| @outrows += 1; r }

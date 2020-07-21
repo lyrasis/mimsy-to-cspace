@@ -12,8 +12,6 @@ module Mimsy
       # n/a -- merge_var_orphans -- add results from above to list of subjects
       # extract_broader -- create working table of broader terms, with CSpace fields. Lookup from merge_var result to
       #   identify and remove any that are already in the subject list
-      # merge_broader -- merge subject_category terms (first occurrence) in as subjects if they do not exist
-      # create subject hierarchy
       @merge_var = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
@@ -81,11 +79,7 @@ module Mimsy
         transform Clean::StripFields, fields: %i[termDisplayName termDisplayNameNonPreferred]
 
         #SECTION below handles creating a normalized preferred term and deduplicating on it
-        transform Copy::Field, from: :termDisplayName, to: :termNorm
-        transform Clean::DowncaseFieldValues, fields: %i[termNorm]
-        transform Clean::RegexpFindReplaceFieldVals, fields: %i[termNorm], find: '\W', replace: ' '
-        transform Clean::RegexpFindReplaceFieldVals, fields: %i[termNorm], find: '  +', replace: ' '
-        transform Clean::StripFields, fields: %i[termNorm]
+        transform Cspace::NormalizeForID, source: :termDisplayName, target: :termNorm
         transform Deduplicate::Flag, on_field: :termNorm, in_field: :duplicate, using: @deduper
         #END SECTION
         
@@ -189,10 +183,7 @@ module Mimsy
         transform Clean::StripFields, fields: %i[subject_category]
 
         #SECTION below handles creating a normalized preferred term and deduplicating on it
-        transform Copy::Field, from: :subject_category, to: :broadNorm
-        transform Clean::DowncaseFieldValues, fields: %i[broadNorm]
-        transform Clean::RegexpFindReplaceFieldVals, fields: %i[broadNorm], find: '\W', replace: ' '
-        transform Clean::RegexpFindReplaceFieldVals, fields: %i[broadNorm], find: '  +', replace: ' '
+        transform Cspace::NormalizeForID, source: :subject_category, target: :broadNorm
         transform Deduplicate::Flag, on_field: :broadNorm, in_field: :duplicate, using: @deduper
         #END SECTION
 
@@ -225,6 +216,7 @@ module Mimsy
         end
         #END SECTION
 
+        transform FilterRows::FieldPopulated, action: :keep, field: :termDisplayName
         #show_me!
         transform{ |r| @outrows += 1; r }
         
@@ -238,11 +230,82 @@ module Mimsy
         end
       end
 
+      @subs_deduped = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        @srcrows = 0
+        @outrows = 0
+
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/working/subjects_with_vars.tsv",
+          csv_options: TSVOPT
+
+        transform{ |r| r.to_h }
+        transform{ |r| @srcrows += 1; r }
+
+        transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'n'
+        #show_me!
+        transform{ |r| @outrows += 1; r }
+        
+        filename = "#{DATADIR}/working/subjects_deduped.tsv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
+        
+        post_process do
+          puts "\n\nDEDUPLICATED SUBJECTS"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+
+      @create_co_lookup = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        @srcrows = 0
+        @outrows = 0
+
+        @subsall = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/subjects_with_vars.tsv",
+                                            csvopt: TSVOPT,
+                                            keycolumn: :msub_id)
+        @subsuniq = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/subjects_deduped.tsv",
+                                            csvopt: TSVOPT,
+                                            keycolumn: :termnorm)
+
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/mimsy/items_subjects.tsv",
+          csv_options: TSVOPT
+
+        transform{ |r| r.to_h }
+        transform{ |r| @srcrows += 1; r }
+
+        transform Merge::MultiRowLookup,
+          lookup: @subsall,
+          keycolumn: :subkey,
+          fieldmap: {:norm => :termnorm}
+
+        transform Merge::MultiRowLookup,
+          lookup: @subsuniq,
+          keycolumn: :norm,
+          fieldmap: {:migratingsub => :termdisplayname}
+
+        transform Delete::Fields, fields: %i[subkey subject norm]
+        #show_me!
+        transform{ |r| @outrows += 1; r }
+        
+        filename = "#{DATADIR}/working/subject_item_lookup.tsv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
+        
+        post_process do
+          puts "\n\nSUBJECT-ITEM LOOKUP"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+
       
       Kiba.run(@merge_var)
       Kiba.run(@dupe_report)
+      Kiba.run(@subs_deduped)
       Kiba.run(@var_report)
       Kiba.run(@extract_broader)
+      Kiba.run(@create_co_lookup)
     end
   end
 end
