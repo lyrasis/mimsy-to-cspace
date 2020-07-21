@@ -1,9 +1,11 @@
 require_relative 'config'
-require_relative 'prelim_cat_remove_loans'
+require_relative 'prelim_cat'
 require_relative 'prelim_measurement_prepare'
+require_relative 'prelim_inscription'
 
-#Mimsy::Cat.setup
-#Mimsy::Measurements.setup
+Mimsy::Cat.setup
+Mimsy::Measurements.setup
+Mimsy::Inscription.setup
 
 # creates working copy of items_makers with preferred_name & individual columns merged in from people,
 #  role column inserted based on relationship, affiliation, and prior attribution
@@ -228,7 +230,7 @@ catjob = Kiba.parse do
   @measure = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/measurements_groups.tsv",
                                   csvopt: TSVOPT,
                                   keycolumn: :mkey)
-  @test = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/co_select.tsv",
+  @inscription = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/inscription.tsv",
                                   csvopt: TSVOPT,
                                   keycolumn: :mkey)
 
@@ -239,18 +241,6 @@ catjob = Kiba.parse do
 
 #  transform FilterRows::FieldEqualTo, action: :keep, field: :mkey, value: '1113'
 
-  # SECTION BELOW selects only listed rows for testing
-  transform Merge::MultiRowLookup,
-    lookup: @test,
-    keycolumn: :mkey,
-    fieldmap: {
-      :keep => :mkey
-    }
-  transform FilterRows::FieldPopulated, action: :keep, field: :keep
-  transform Delete::Fields, fields: %i[keep]
-  # END SECTION
-
-  
   # id_number is required
   transform FilterRows::FieldPopulated, action: :keep, field: :id_number
 
@@ -415,6 +405,19 @@ catjob = Kiba.parse do
     }
   transform Rename::Field, from: :measurements, to: :dimensionSummary
 
+  transform Merge::MultiRowLookup,
+    lookup: @inscription,
+    keycolumn: :mkey,
+    fieldmap: {
+      inscriptionContent: :inscriptioncontent,
+      inscriptionContentLanguage: :inscriptioncontentlanguage,
+      inscriptionContentTranslation: :inscriptioncontenttranslation,
+      inscriptionContentType: :inscriptioncontenttype,
+      inscriptionContentMethod: :inscriptioncontentmethod,
+      inscriptionContentPosition: :inscriptioncontentposition,
+      inscriptionContentInterpretation: :inscriptioncontentinterpretation
+    }
+  
   transform Clean::RegexpFindReplaceFieldVals,
     fields: %i[dimensionSummary],
     find: ';',

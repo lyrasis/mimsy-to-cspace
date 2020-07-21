@@ -1,5 +1,5 @@
 require_relative 'config'
-require_relative 'prelim_cat_remove_loans'
+require_relative 'prelim_cat'
 
 Mimsy::Cat.setup
 
@@ -136,10 +136,6 @@ extend Kiba::Common::DSLExtensions::ShowMe
   @srcrows = 0
   @outrows = 0
 
-  @test = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/co_select.tsv",
-                                   csvopt: TSVOPT,
-                                   keycolumn: :mkey)
-
   @aikeys = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/acqitem_link.tsv",
                                       csvopt: TSVOPT,
                                       keycolumn: :m_id)
@@ -150,18 +146,7 @@ extend Kiba::Common::DSLExtensions::ShowMe
   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/catalogue.tsv", csv_options: TSVOPT
   transform { |r| r.to_h }
   transform{ |r| @srcrows += 1; r }
-
-  # SECTION BELOW selects only listed rows for testing
-  transform Merge::MultiRowLookup,
-    lookup: @test,
-    keycolumn: :mkey,
-    fieldmap: {
-      :keep => :mkey
-    }
-  transform FilterRows::FieldPopulated, action: :keep, field: :keep
-  transform Delete::Fields, fields: %i[keep]
-  # END SECTION
-
+  
   transform Delete::FieldsExcept, keepfields: %i[mkey id_number]
 
   transform Merge::MultiRowLookup,

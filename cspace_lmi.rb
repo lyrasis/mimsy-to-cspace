@@ -1,5 +1,5 @@
 require_relative 'config'
-require_relative 'prelim_cat_remove_loans'
+require_relative 'prelim_cat'
 
 Mimsy::Cat.setup
 
@@ -14,28 +14,13 @@ lmijob = Kiba.parse do
   @locmap = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/location_mapper_no_comma.tsv",
                                        csvopt: TSVOPT,
                                        keycolumn: :norm_value)
-  @test = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/co_select.tsv",
-                                   csvopt: TSVOPT,
-                                   keycolumn: :mkey)
-
-
+  
   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/catalogue.tsv", csv_options: TSVOPT
   # Ruby's CSV gives us "CSV::Row" but we want Hash
   transform { |r| r.to_h }
   transform{ |r| @srcrows += 1; r }
 
   #  transform FilterRows::FieldEqualTo, action: :keep, field: :mkey, value: '1113'
-
-  # # SECTION BELOW selects only listed rows for testing
-  # transform Merge::MultiRowLookup,
-  #   lookup: @test,
-  #   keycolumn: :mkey,
-  #   fieldmap: {
-  #     :keep => :mkey
-  #   }
-  # transform FilterRows::FieldPopulated, action: :keep, field: :keep
-  # transform Delete::Fields, fields: %i[keep]
-  # # END SECTION
 
   # keep only rows with location data
   transform CombineValues::FromFieldsWithDelimiter,

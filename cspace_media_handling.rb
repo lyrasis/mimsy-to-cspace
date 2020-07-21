@@ -1,4 +1,91 @@
 require_relative 'config'
+require_relative 'prelim_cat'
+
+Mimsy::Cat.setup
+
+# create normalized filename column in AWS S3 bucket file list
+awsjob = Kiba.parse do
+  extend Kiba::Common::DSLExtensions::ShowMe
+  @srcrows = 0
+  @outrows = 0
+  @deduper = {}
+  
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/s3_media_files.tsv", csv_options: TSVOPT
+  transform { |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform do |row|
+    fn = row.fetch(:awsfilename, nil)
+    fn ? row[:normawsfilename] = fn.downcase : row[:normawsfilename] = nil
+    row
+  end
+
+  transform Deduplicate::Flag, on_field: :normawsfilename, in_field: :duplicate, using: @deduper
+       #show_me!
+    transform{ |r| @outrows += 1; r }
+  filename = "#{DATADIR}/working/aws_norm_flagged.tsv"
+  destination Kiba::Extend::Destinations::CSV,
+    filename: filename,
+    csv_options: TSVOPT
+  post_process do
+    puts "\n\nAWS FILENAMES NORMALIZED, DUPES FLAGGED"
+    puts "#{@outrows} (of #{@srcrows}"
+    puts "file: #{filename}"
+  end
+end
+Kiba.run(awsjob)
+
+awsuniqjob = Kiba.parse do
+  extend Kiba::Common::DSLExtensions::ShowMe
+  @srcrows = 0
+  @outrows = 0
+  @deduper = {}
+  
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/aws_norm_flagged.tsv", csv_options: TSVOPT
+  transform { |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'n'
+  
+       #show_me!
+    transform{ |r| @outrows += 1; r }
+  filename = "#{DATADIR}/working/aws_norm.tsv"
+  destination Kiba::Extend::Destinations::CSV,
+    filename: filename,
+    csv_options: TSVOPT
+  post_process do
+    puts "\n\nUNIQUE AWS NORMALIZED FILENAMES"
+    puts "#{@outrows} (of #{@srcrows})"
+    puts "file: #{filename}"
+  end
+end
+Kiba.run(awsuniqjob)
+
+awsdupesjob = Kiba.parse do
+  extend Kiba::Common::DSLExtensions::ShowMe
+  @srcrows = 0
+  @outrows = 0
+  @deduper = {}
+  
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/aws_norm_flagged.tsv", csv_options: TSVOPT
+  transform { |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'y'
+  
+       #show_me!
+    transform{ |r| @outrows += 1; r }
+  filename = "#{DATADIR}/reports/DUPLICATE_norm_filenames.tsv"
+  destination Kiba::Extend::Destinations::CSV,
+    filename: filename,
+    csv_options: TSVOPT
+  post_process do
+    puts "\n\nDUPLICATE AWS NORMALIZED FILENAMES"
+    puts "#{@outrows} (of #{@srcrows})"
+    puts "file: #{filename}"
+  end
+end
+Kiba.run(awsdupesjob)
 
 mediajob = Kiba.parse do
   extend Kiba::Common::DSLExtensions::ShowMe
@@ -13,6 +100,9 @@ mediajob = Kiba.parse do
     @med = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/media.tsv",
                                        csvopt: TSVOPT,
                                        keycolumn: :mediakey)
+    @aws = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/aws_norm.tsv",
+                                    csvopt: TSVOPT,
+                                    keycolumn: :normawsfilename)
 
   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/items_media.tsv", csv_options: TSVOPT
   # Ruby's CSV gives us "CSV::Row" but we want Hash
@@ -27,6 +117,7 @@ mediajob = Kiba.parse do
     fieldmap: {
       :object_id => :id_number
     }
+  transform FilterRows::FieldPopulated, action: :keep, field: :object_id
   
   transform Merge::MultiRowLookup,
     lookup: @med,
@@ -39,7 +130,8 @@ mediajob = Kiba.parse do
     lookup: @med,
     keycolumn: :mediakey,
     fieldmap: {
-      rectype: :record_type
+      rectype: :record_type,
+      mediafilename: :media_id
     }
   transform Replace::FieldValueWithStaticMapping,
     source: :rectype,
@@ -80,18 +172,33 @@ mediajob = Kiba.parse do
     sep: ' '
 
   transform do |row|
-    filename = row.fetch(:filename, nil)
+    fn = row.fetch(:filename, nil)
+    row[:normfilename] = fn ? row[:filename].downcase : nil
+    row
+  end
+  
+    transform Merge::MultiRowLookup,
+    lookup: @aws,
+    keycolumn: :normfilename,
+    fieldmap: {
+      awsfilename: :awsfilename,
+      filesize: :filesize
+    }
+
+  transform do |row|
+    filename = row.fetch(:awsfilename, nil)
     if filename
-      row[:blob_uri] = "https://path/to/aws_bucket/#{filename}"
+      row[:bloburi] = "https://breman-media.s3-us-west-2.amazonaws.com/#{filename}"
     else
-      row[:blob_uri] = nil
+      row[:bloburi] = nil
     end
     row
   end
-    
-  transform Delete::FieldValueIfEqualsOtherField,
-    delete: :media,
-    if_equal_to: :filename
+
+  # # check if any media values are different from filename values
+  # transform Delete::FieldValueIfEqualsOtherField,
+  #   delete: :media,
+  #   if_equal_to: :filename
 
   transform Delete::Fields, fields: %i[media]
 
@@ -118,6 +225,61 @@ mediajob = Kiba.parse do
 end
 Kiba.run(mediajob)
 
+nofilereportjob = Kiba.parse do
+  extend Kiba::Common::DSLExtensions::ShowMe
+  @srcrows = 0
+  @outrows = 0
+
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/media_handling.tsv", csv_options: TSVOPT
+  # Ruby's CSV gives us "CSV::Row" but we want Hash
+  transform { |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform FilterRows::FieldPopulated, action: :keep, field: :object_id
+  transform FilterRows::FieldPopulated, action: :reject, field: :awsfilename
+  transform Rename::Field, from: :filename, to: :identificationNumber
+    #   show_me!
+    transform{ |r| @outrows += 1; r }
+  filename = "#{DATADIR}/reports/missing_media_files.csv"
+  destination Kiba::Extend::Destinations::CSV,
+    filename: filename,
+    initial_headers: %i[identificationNumber],
+    csv_options: CSVOPT
+  post_process do
+    puts "\n\nNO MATCHING FILE IN S3 BUCKET"
+    puts "#{@outrows} (of #{@srcrows})"
+    puts "file: #{filename}"
+  end
+end
+Kiba.run(nofilereportjob)
+
+nomediaidreportjob = Kiba.parse do
+  extend Kiba::Common::DSLExtensions::ShowMe
+  @srcrows = 0
+  @outrows = 0
+
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/media_handling.tsv", csv_options: TSVOPT
+  # Ruby's CSV gives us "CSV::Row" but we want Hash
+  transform { |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform FilterRows::FieldPopulated, action: :reject, field: :filename
+  transform Rename::Field, from: :filename, to: :identificationNumber
+    #   show_me!
+    transform{ |r| @outrows += 1; r }
+  filename = "#{DATADIR}/reports/missing_media_filenames.csv"
+  destination Kiba::Extend::Destinations::CSV,
+    filename: filename,
+    initial_headers: %i[identificationNumber],
+    csv_options: CSVOPT
+  post_process do
+    puts "\n\nNO FILENAME IN ITEMS_MEDIA"
+    puts "#{@outrows} (of #{@srcrows})"
+    puts "file: #{filename}"
+  end
+end
+Kiba.run(nomediaidreportjob)
+
 mediaprocjob = Kiba.parse do
   extend Kiba::Common::DSLExtensions::ShowMe
   @srcrows = 0
@@ -129,8 +291,17 @@ mediaprocjob = Kiba.parse do
   transform{ |r| @srcrows += 1; r }
 
   transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate_procedure, value: 'n'
-  transform Delete::Fields, fields: %i[mkey mediakey object_id duplicate_procedure duplicate_relationship]
+  transform FilterRows::FieldPopulated, action: :keep, field: :filename
+  transform FilterRows::FieldPopulated, action: :keep, field: :bloburi
+  transform Delete::Fields, fields: %i[mkey mediakey object_id duplicate_procedure duplicate_relationship
+                                       mediafilename normfilename awsfilename filesize medmkey]
   transform Rename::Field, from: :filename, to: :identificationNumber
+  transform Merge::ConstantValue, target: :concat, value: 'media'
+  transform CombineValues::FromFieldsWithDelimiter,
+    sources: %i[identificationNumber concat],
+    target: :identificationNumber,
+    sep: ' '
+  
     #   show_me!
     transform{ |r| @outrows += 1; r }
   filename = "#{DATADIR}/cs/media_handling.csv"
@@ -182,10 +353,16 @@ mediareljob = Kiba.parse do
   transform{ |r| @srcrows += 1; r }
 
   transform FilterRows::FieldPopulated, action: :keep, field: :object_id
+  transform FilterRows::FieldPopulated, action: :keep, field: :filename
   transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate_relationship, value: 'n'
   transform Delete::FieldsExcept, keepfields: %i[object_id filename]
-  transform Rename::Field, from: :filename, to: :objectIdentifier
-  transform Merge::ConstantValue, target: :objectDocumentType, value: 'MediaHandling'
+  transform Merge::ConstantValue, target: :concat, value: 'media'
+  transform CombineValues::FromFieldsWithDelimiter,
+    sources: %i[filename concat],
+    target: :objectIdentifier,
+    sep: ' '
+
+  transform Merge::ConstantValue, target: :objectDocumentType, value: 'Media'
   transform Rename::Field, from: :object_id, to: :subjectIdentifier
   transform Merge::ConstantValue, target: :subjectDocumentType, value: 'CollectionObject'
 

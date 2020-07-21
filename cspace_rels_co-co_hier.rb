@@ -1,51 +1,7 @@
 require_relative 'config'
-require_relative 'prelim_cat_remove_loans'
+require_relative 'prelim_cat'
 
 Mimsy::Cat.setup
-
-# create table just of test records
-catjob = Kiba.parse do
-  extend Kiba::Common::DSLExtensions::ShowMe
-  @deduper = {}
-  @srcrows = 0
-  @outrows = 0
-
-  @test = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/co_select.tsv",
-                                  csvopt: TSVOPT,
-                                  keycolumn: :mkey)
-
-  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/catalogue.tsv", csv_options: TSVOPT
-  # Ruby's CSV gives us "CSV::Row" but we want Hash
-  transform { |r| r.to_h }
-  transform{ |r| @srcrows += 1; r }
-
-  # # SECTION BELOW selects only listed rows for testing
-  # transform Merge::MultiRowLookup,
-  #   lookup: @test,
-  #   keycolumn: :mkey,
-  #   fieldmap: {
-  #     :keep => :mkey
-  #   }
-  # transform FilterRows::FieldPopulated, action: :keep, field: :keep
-  # transform Delete::Fields, fields: %i[keep]
-  # # END SECTION
- 
-  #show_me!
-  
-  transform{ |r| @outrows += 1; r }
-  filename = "#{DATADIR}/working/collectionobjects_rel_testset.tsv"
-  destination Kiba::Extend::Destinations::CSV,
-    filename: filename,
-   initial_headers: %i[id_number parent_key broader_text whole_part],
-    csv_options: TSVOPT
-    
-  post_process do
-    puts "\n\nCOLLECTIONOBJECT TEST RECORDS"
-    puts "#{@outrows} (of #{@srcrows})"
-    puts "file: #{filename}"
-  end
-end
-Kiba.run(catjob)
 
 relsjob = Kiba.parse do
   extend Kiba::Common::DSLExtensions::ShowMe
@@ -56,7 +12,7 @@ relsjob = Kiba.parse do
   @mkeylkup = {}
   @ids = []
   
-  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/collectionobjects_rel_testset.tsv", csv_options: TSVOPT
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/catalogue.tsv", csv_options: TSVOPT
   # Ruby's CSV gives us "CSV::Row" but we want Hash
   transform { |r| r.to_h }
   transform{ |r| @srcrows += 1; r }
