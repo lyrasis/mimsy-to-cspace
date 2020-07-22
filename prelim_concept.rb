@@ -1,7 +1,7 @@
 require_relative 'config'
 
 module Mimsy
-  module Subject
+  module Concept
     def self.setup
       # merge_var -- merge subject_variations terms into subjects; create basic CSpace concept field structure;
       #   normalize and populate duplicates
@@ -40,17 +40,18 @@ module Mimsy
         transform Replace::FieldValueWithStaticMapping, source: :language, target: :termLanguage, mapping: LANGUAGES
 
         #SECTION below retains only the first broader term and normalizes it for creation of hierarchy later
+        
         transform Rename::Field, from: :subject_category, to: :broaderTerm
         transform do |row|
           bt = row.fetch(:broaderTerm, nil)
           if bt.nil? || bt.empty?
-            row[:broaderNorm] = nil
+            row[:broaderTerm] = nil
           else
-          bt = bt.split(MVDELIM).first.downcase.gsub(/\W/, ' ').gsub(/  +/, ' ').strip
-          row[:broaderNorm] = bt
+            row[:broaderTerm] = bt.split(MVDELIM).first
           end
           row
         end
+        transform Cspace::NormalizeForID, source: :broaderTerm, target: :broaderNorm
         #END SECTION
 
         transform Merge::MultiRowLookup,
@@ -86,11 +87,11 @@ module Mimsy
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/working/subjects_with_vars.tsv"
+        filename = "#{DATADIR}/working/concepts_with_vars.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nDUPE-FLAGGED SUBJECTS WITH VARIATIONS MERGED IN"
+          puts "\n\nDUPE-FLAGGED CONCEPTS WITH VARIATIONS MERGED IN"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
@@ -102,7 +103,7 @@ module Mimsy
         @outrows = 0
 
         source Kiba::Common::Sources::CSV,
-          filename: "#{DATADIR}/working/subjects_with_vars.tsv",
+          filename: "#{DATADIR}/working/concepts_with_vars.tsv",
           csv_options: TSVOPT
 
         transform{ |r| r.to_h }
@@ -113,11 +114,11 @@ module Mimsy
         
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/reports/DUPLICATE_subjects.tsv"
+        filename = "#{DATADIR}/reports/DUPLICATE_concepts.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nDUPLICATE SUBJECTS"
+          puts "\n\nDUPLICATE CONCEPTS"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
@@ -151,11 +152,11 @@ module Mimsy
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/reports/variant_subjects_with_no_prefTerm.tsv"
+        filename = "#{DATADIR}/reports/variant_concepts_with_no_prefTerm.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nVARIANT SUBJECTS WITH NO PREFERRED TERM"
+          puts "\n\nVARIANT CONCEPTS WITH NO PREFERRED TERM"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
@@ -167,7 +168,7 @@ module Mimsy
         @outrows = 0
         @deduper = {}
 
-        @subs = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/subjects_with_vars.tsv",
+        @subs = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/concepts_with_vars.tsv",
                                          csvopt: TSVOPT,
                                          keycolumn: :termnorm)
 
@@ -220,11 +221,11 @@ module Mimsy
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/working/subjects_broader.tsv"
+        filename = "#{DATADIR}/working/concepts_broader.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nBROADER SUBJECTS"
+          puts "\n\nBROADER CONCEPTS"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
@@ -236,7 +237,7 @@ module Mimsy
         @outrows = 0
 
         source Kiba::Common::Sources::CSV,
-          filename: "#{DATADIR}/working/subjects_with_vars.tsv",
+          filename: "#{DATADIR}/working/concepts_with_vars.tsv",
           csv_options: TSVOPT
 
         transform{ |r| r.to_h }
@@ -246,11 +247,11 @@ module Mimsy
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/working/subjects_deduped.tsv"
+        filename = "#{DATADIR}/working/concepts_deduped.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nDEDUPLICATED SUBJECTS"
+          puts "\n\nDEDUPLICATED CONCEPTS"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
@@ -261,10 +262,10 @@ module Mimsy
         @srcrows = 0
         @outrows = 0
 
-        @subsall = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/subjects_with_vars.tsv",
+        @subsall = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/concepts_with_vars.tsv",
                                             csvopt: TSVOPT,
                                             keycolumn: :msub_id)
-        @subsuniq = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/subjects_deduped.tsv",
+        @subsuniq = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/concepts_deduped.tsv",
                                             csvopt: TSVOPT,
                                             keycolumn: :termnorm)
 
@@ -289,11 +290,11 @@ module Mimsy
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/working/subject_item_lookup.tsv"
+        filename = "#{DATADIR}/working/concept_item_lookup.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nSUBJECT-ITEM LOOKUP"
+          puts "\n\nCONCEPT-ITEM LOOKUP"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end

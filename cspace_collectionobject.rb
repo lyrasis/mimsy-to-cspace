@@ -2,12 +2,12 @@ require_relative 'config'
 require_relative 'prelim_cat'
 require_relative 'prelim_measurement_prepare'
 require_relative 'prelim_inscription'
-require_relative 'prelim_subject'
+require_relative 'prelim_concept'
 
 Mimsy::Cat.setup
 Mimsy::Measurements.setup
 Mimsy::Inscription.setup
-Mimsy::Subject.setup
+Mimsy::Concept.setup
 
 # creates working copy of items_makers with preferred_name & individual columns merged in from people,
 #  role column inserted based on relationship, affiliation, and prior attribution
