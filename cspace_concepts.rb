@@ -25,6 +25,11 @@ all_subjects = Kiba.parse do
   transform Delete::Fields, fields: %i[duplicate]
   transform Deduplicate::Flag, on_field: :termnorm, in_field: :duplicate, using: @deduper
   transform FilterRows::FieldEqualTo, action: :reject, field: :duplicate, value: 'y'
+
+  transform Clean::RegexpFindReplaceFieldVals,
+    fields: %i[termsourcenote scopenote],
+    find: ';',
+    replace: ','
   
   transform Delete::Fields, fields: %i[msub_id broaderterm broadernorm termnorm duplicate]
   transform{ |r| @outrows += 1; r }
