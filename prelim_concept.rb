@@ -12,6 +12,7 @@ module Mimsy
       # n/a -- merge_var_orphans -- add results from above to list of subjects
       # extract_broader -- create working table of broader terms, with CSpace fields. Lookup from merge_var result to
       #   identify and remove any that are already in the subject list
+      # all_concepts -- combine main subject list with broader, deduplicate again
       @merge_var = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
@@ -300,6 +301,39 @@ module Mimsy
         end
       end
 
+      @all_concepts = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        @srcrows = 0
+        @outrows = 0
+        @deduper = {}
+        
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/working/concepts_deduped.tsv",
+          csv_options: TSVOPT
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/working/concepts_broader.tsv",
+          csv_options: TSVOPT
+        
+        transform{ |r| r.to_h }
+        transform{ |r| @srcrows += 1; r }
+
+        transform Delete::Fields, fields: %i[duplicate]
+        transform Deduplicate::Flag, on_field: :termnorm, in_field: :duplicate, using: @deduper
+        transform FilterRows::FieldEqualTo, action: :reject, field: :duplicate, value: 'y'
+
+        #show_me!
+        transform{ |r| @outrows += 1; r }
+        
+        filename = "#{DATADIR}/working/concepts_all.tsv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
+        
+        post_process do
+          puts "\n\nCONCEPTS COMBINED"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+
       
       Kiba.run(@merge_var)
       Kiba.run(@dupe_report)
@@ -307,6 +341,7 @@ module Mimsy
       Kiba.run(@var_report)
       Kiba.run(@extract_broader)
       Kiba.run(@create_co_lookup)
+      Kiba.run(@all_concepts)
     end
   end
 end

@@ -296,11 +296,14 @@ mediaprocjob = Kiba.parse do
   transform Delete::Fields, fields: %i[mkey mediakey object_id duplicate_procedure duplicate_relationship
                                        mediafilename normfilename awsfilename filesize medmkey]
   transform Rename::Field, from: :filename, to: :identificationNumber
+
+  # SECTION BELOW recovers from not being able to batch delete media records via converter-tool 
   transform Merge::ConstantValue, target: :concat, value: 'media'
   transform CombineValues::FromFieldsWithDelimiter,
     sources: %i[identificationNumber concat],
     target: :identificationNumber,
     sep: ' '
+  # END SECTION
   
     #   show_me!
     transform{ |r| @outrows += 1; r }

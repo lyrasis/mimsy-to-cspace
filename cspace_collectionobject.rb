@@ -235,7 +235,7 @@ catjob = Kiba.parse do
   @inscription = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/inscription.tsv",
                                   csvopt: TSVOPT,
                                   keycolumn: :mkey)
-  @subjects = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/subject_item_lookup.tsv",
+  @subjects = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/concept_item_lookup.tsv",
                                           csvopt: TSVOPT,
                                           keycolumn: :mkey)
 
@@ -427,7 +427,7 @@ catjob = Kiba.parse do
     lookup: @subjects,
     keycolumn: :mkey,
     fieldmap: {
-      contentConcept: :migratingsub
+      contentConceptAssociated: :migratingsub
     },
     delim: MVDELIM
 

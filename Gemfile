@@ -6,4 +6,4 @@ gem 'kiba'
 gem 'kiba-common'
 gem 'pry'
 
-gem 'kiba-extend', '0.1.2', :github => 'lyrasis/kiba-extend', :branch => 'master'
+gem 'kiba-extend', '0.1.5', :github => 'lyrasis/kiba-extend', :branch => 'master'
