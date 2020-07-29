@@ -1,10 +1,12 @@
 require_relative 'config'
 require_relative 'prelim_cat'
+require_relative 'prelim_place'
 require_relative 'prelim_measurement_prepare'
 require_relative 'prelim_inscription'
 require_relative 'prelim_concept'
 
 Mimsy::Cat.setup
+Mimsy::Place.setup
 Mimsy::Measurements.setup
 Mimsy::Inscription.setup
 Mimsy::Concept.setup
@@ -238,6 +240,9 @@ catjob = Kiba.parse do
   @subjects = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/concept_item_lookup.tsv",
                                           csvopt: TSVOPT,
                                           keycolumn: :mkey)
+  @places = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/place_norm_lookup.tsv",
+                                          csvopt: TSVOPT,
+                                          keycolumn: :normplace)
 
   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/catalogue.tsv", csv_options: TSVOPT
   # Ruby's CSV gives us "CSV::Row" but we want Hash
@@ -381,8 +386,6 @@ catjob = Kiba.parse do
   transform Rename::Field, from: :item_count, to: :numberOfObjects
   transform Rename::Field, from: :materials, to: :material
   transform Rename::Field, from: :date_collected, to: :fieldCollectionDateGroup
-  transform Rename::Field, from: :place_collected, to: :fieldCollectionPlaceLocal
-  transform Rename::Field, from: :place_made, to: :objectProductionPlaceLocal
   transform Rename::Field, from: :culture, to: :objectProductionPeople
   transform Rename::Field, from: :date_made, to: :objectProductionDateGroup
   
@@ -399,6 +402,60 @@ catjob = Kiba.parse do
 
   transform Rename::Field, from: :credit_line, to: :namedCollection
 
+  # SECTION BELOW ensures place format matching place authorities is used in object records
+  #  This is because I ran into trouble importing objects whose stub place records resolved
+  #  to the same normalized CSpace ID
+  transform Cspace::NormalizeForID, source: :place_collected, target: :norm_place_collected
+  transform Cspace::NormalizeForID, source: :place_made, target: :norm_place_made
+
+  transform Merge::MultiRowLookup,
+    lookup: @places,
+    keycolumn: :norm_place_collected,
+    fieldmap: {
+      :fieldCollectionPlaceLocal => :place,
+    },
+    conditions: {
+      include: {
+        :field_equal => { fieldsets: [
+          {matches: [
+            ['mergerow::duplicate','value::n']
+          ]}
+        ]}
+      }
+    },
+    delim: MVDELIM
+  
+  transform Merge::MultiRowLookup,
+    lookup: @places,
+    keycolumn: :norm_place_made,
+    fieldmap: {
+      :objectProductionPlaceLocal => :place,
+    },
+    conditions: {
+      include: {
+        :field_equal => { fieldsets: [
+          {matches: [
+            ['mergerow::duplicate','value::n']
+          ]}
+        ]}
+      }
+    },
+    delim: MVDELIM
+
+  transform do |row|
+    pc = row.fetch(:place_collected, nil)
+    pcn = row.fetch(:fieldCollectionPlaceLocal, nil)
+    row[:diff] = pc == pcn ? nil : 'y'
+
+    pm = row.fetch(:place_made, nil)
+    pmn = row.fetch(:objectProductionPlaceLocal, nil)
+    
+    row
+  end
+  #transform Rename::Field, from: :place_collected, to: :fieldCollectionPlaceLocal
+  #transform Rename::Field, from: :place_made, to: :objectProductionPlaceLocal
+  # END SECTION
+  
   transform Merge::MultiRowLookup,
     lookup: @measure,
     keycolumn: :mkey,

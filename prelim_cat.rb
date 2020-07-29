@@ -31,7 +31,7 @@ module Mimsy
       
       transform{ |r| @outrows += 1; r }
       
-      filename = "#{DATADIR}/working/catalogue_no_loans.tsv"
+      filename = "#{DATADIR}/working/catalogue.tsv"
       destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
       
       post_process do
@@ -46,12 +46,15 @@ module Mimsy
         @srcrows = 0
         @outrows = 0
 
-        @test = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/co_select.tsv",
+        @inittest = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/co_select1.tsv",
+                                         csvopt: TSVOPT,
+                                         keycolumn: :mkey)
+        @reltest = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/co_select.tsv",
                                          csvopt: TSVOPT,
                                          keycolumn: :mkey)
 
         source Kiba::Common::Sources::CSV,
-          filename: "#{DATADIR}/working/catalogue_no_loans.tsv",
+          filename: "#{DATADIR}/working/catalogue.tsv",
           csv_options: TSVOPT
         transform{ |r| r.to_h }
         transform{ |r| @srcrows += 1; r }
@@ -59,6 +62,12 @@ module Mimsy
         # SECTION BELOW selects only listed rows for testing
         transform Merge::MultiRowLookup,
           lookup: @test,
+          keycolumn: :mkey,
+          fieldmap: {
+            :keep => :mkey
+          }
+        transform Merge::MultiRowLookup,
+          lookup: @reltest,
           keycolumn: :mkey,
           fieldmap: {
             :keep => :mkey
@@ -81,7 +90,7 @@ module Mimsy
       # https://3.basecamp.com/3410311/buckets/16953827/todos/2708290043
       Kiba.run(@remove_loans)
       # keeps only test records listed in data/working/co_select.tsv
-      Kiba.run(@testrecs)
+      #Kiba.run(@testrecs)
     end
   end
 end
