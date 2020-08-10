@@ -98,6 +98,8 @@ module Mimsy
         end
       end
 
+      Kiba.run(@merge_var)
+      
       @dupe_report = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
@@ -124,7 +126,8 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-
+      Kiba.run(@dupe_report)
+      
       @var_report = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
@@ -162,6 +165,7 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
+      Kiba.run(@var_report)
 
       @extract_broader = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
@@ -231,7 +235,8 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-
+      Kiba.run(@extract_broader)
+      
       @subs_deduped = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
@@ -257,7 +262,8 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-
+      Kiba.run(@subs_deduped)
+      
       @create_co_lookup = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
@@ -300,7 +306,8 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-
+      Kiba.run(@create_co_lookup)
+      
       @all_concepts = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
@@ -333,14 +340,6 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-
-      
-      Kiba.run(@merge_var)
-      Kiba.run(@dupe_report)
-      Kiba.run(@subs_deduped)
-      Kiba.run(@var_report)
-      Kiba.run(@extract_broader)
-      Kiba.run(@create_co_lookup)
       Kiba.run(@all_concepts)
     end
   end

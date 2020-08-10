@@ -1,9 +1,9 @@
 GIT
   remote: git://github.com/lyrasis/kiba-extend.git
-  revision: 5a26c96e38141c5852f581d316cfa21dca777aed
+  revision: 21de9770f56b2baa27795011df395d82fe2d4677
   branch: master
   specs:
-    kiba-extend (0.1.5)
+    kiba-extend (0.1.7)
       activesupport
       kiba (>= 3.0.0)
       kiba-common (>= 0.9.0)
@@ -46,7 +46,7 @@ DEPENDENCIES
   facets
   kiba
   kiba-common
-  kiba-extend (= 0.1.5)!
+  kiba-extend (= 0.1.7)!
   pry
 
 BUNDLED WITH

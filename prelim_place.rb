@@ -40,6 +40,8 @@ module Mimsy
   transform Delete::Fields, fields: %i[duplicate]
   # END SECTION
 
+  transform Cspace::FlagInvalidCharacters, check: :place, flag: :flag
+  
   # SECTION BELOW adds column with place normalized for CSpace ID
   transform Cspace::NormalizeForID, source: :place, target: :normplace
   transform Deduplicate::Flag, on_field: :normplace, in_field: :duplicate, using: @normdeduper
@@ -74,7 +76,7 @@ end
   transform Merge::ConstantValue, target: :termSourceLocal, value: 'Mimsy export'
   transform Merge::ConstantValue, target: :termSourceDetail, value: 'used in catalogue.csv PLACE_MADE or PLACE_COLLECTED'
   
-  show_me!
+  #show_me!
   transform{ |r| @outrows += 1; r }
   filename = "#{DATADIR}/cs/places.csv"
   destination Kiba::Extend::Destinations::CSV,

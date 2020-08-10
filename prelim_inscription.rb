@@ -232,7 +232,7 @@ module Mimsy
           filename: filename,
           csv_options: TSVOPT
         post_process do
-          puts "\n\nINSCRIPTION TYPE BASIC CLEAN"
+          puts "\n\nINSCRIPTION DATA TO MERGE"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end

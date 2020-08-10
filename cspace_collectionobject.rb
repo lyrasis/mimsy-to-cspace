@@ -1,218 +1,19 @@
 require_relative 'config'
+require_relative 'prelim_acqitems'
 require_relative 'prelim_cat'
 require_relative 'prelim_place'
 require_relative 'prelim_measurement_prepare'
 require_relative 'prelim_inscription'
 require_relative 'prelim_concept'
+require_relative 'prelim_names_for_co'
 
+Mimsy::AcqItems.setup
 Mimsy::Cat.setup
 Mimsy::Place.setup
 Mimsy::Measurements.setup
 Mimsy::Inscription.setup
 Mimsy::Concept.setup
-
-# creates working copy of items_makers with preferred_name & individual columns merged in from people,
-#  role column inserted based on relationship, affiliation, and prior attribution
-namesjob = Kiba.parse do
-  extend Kiba::Common::DSLExtensions::ShowMe
-  @srcrows = 0
-  @outrows = 0
-  @names = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/people.tsv",
-                                    csvopt: TSVOPT,
-                                    keycolumn: :link_id)
-
-  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/items_makers.tsv", csv_options: TSVOPT
-  transform { |r| r.to_h }
-  transform{ |r| @srcrows += 1; r }
-
-  transform Merge::MultiRowLookup,
-    lookup: @names,
-    keycolumn: :link_id,
-    fieldmap: {
-      :preferred_name => :preferred_name,
-      :individual => :individual
-    }
-
-  # where affiliation = Maker, relationship is blank --- collapse into one downcased column
-  transform Rename::Field, from: :relationship, to: :role
-  transform CombineValues::FromFieldsWithDelimiter,
-    sources: %i[role affiliation],
-    target: :role,
-    sep: ''
-  transform Clean::DowncaseFieldValues, fields: [:role]
-
-  # turn "maker" into "maker (prior attribution)" if prior_attribution column = Y
-  transform Replace::FieldValueWithStaticMapping,
-    source: :prior_attribution,
-    target: :prior_attribution_mapped,
-    mapping: PRIORATTR,
-    delete_source: false
-  transform CombineValues::FromFieldsWithDelimiter,
-    sources: %i[role prior_attribution_mapped],
-    target: :role,
-    sep: ''
-
-  #show_me!
-  transform{ |r| @outrows += 1; r }
-  filename = "#{DATADIR}/working/items_makers.tsv"
-  destination Kiba::Extend::Destinations::CSV,
-    filename: filename,
-    csv_options: TSVOPT
-  post_process do
-    puts "\n\nITEMS_MAKERS COPY"
-    puts "#{@outrows} (of #{@srcrows})"
-    puts "file: #{filename}"
-  end
-end
-Kiba.run(namesjob)
-
-acqitemcatjob = Kiba.parse do
-  extend Kiba::Common::DSLExtensions::ShowMe
-  @deduper = {}
-  @srcrows = 0
-  @outrows = 0
-
-  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/acquisition_items.tsv", csv_options: TSVOPT
-  # Ruby's CSV gives us "CSV::Row" but we want Hash
-  transform { |r| r.to_h }
-  transform{ |r| @srcrows += 1; r }
-
-  # this only processes rows with no link to catalogue.csv
-  transform FilterRows::FieldPopulated, action: :reject, field: :m_id
-  
-  # id_number is required
-  transform FilterRows::FieldPopulated, action: :keep, field: :id_number
-
-
-  transform Rename::Field, from: :id_number, to: :objectNumber
-  transform Rename::Field, from: :transfer_date, to: :assocstructureddategroup
-  transform Merge::ConstantValueConditional,
-    fieldmap: { assocdatetype: 'acquisition transfer date' },
-    conditions: {
-      exclude: {
-        field_empty: { fieldsets: [
-          {
-            fields: ['row::assocstructureddategroup']
-          }
-        ]
-       }
-      }
-    }
-  transform Merge::ConstantValue, target: :inventoryStatus, value: 'not cataloged'
-
-
-  transform do |row|
-    summary = row.fetch(:item_summary, nil)
-    if summary
-      row[:briefDescription] = summary.split('LINEBREAKWASHERE').join(' -- ')
-    else
-      row[:briefDescription] = nil
-    end
-    row
-  end
-
-  # # SECTION below adds columns used in collectionobject csv
-  # # It is unnecessary if we can't combine two data sources
-  # transform Merge::ConstantValue, target: :title, value: nil
-  # transform Merge::ConstantValue, target: :objectproductionperson, value: nil
-  # transform Merge::ConstantValue, target: :objectproductionorganization, value: nil
-  # transform Merge::ConstantValue, target: :objectproductionpersonrole, value: nil
-  # transform Merge::ConstantValue, target: :objectproductionorganizationrole, value: nil
-  # transform Merge::ConstantValue, target: :objectname, value: nil
-  # transform Merge::ConstantValue, target: :objectnamelanguage, value: nil
-  # transform Merge::ConstantValue, target: :numberofobjects, value: nil
-  # transform Merge::ConstantValue, target: :material, value: nil
-  # transform Merge::ConstantValue, target: :fieldcollectiondategroup, value: nil
-  # transform Merge::ConstantValue, target: :fieldcollectionplacelocal, value: nil
-  # transform Merge::ConstantValue, target: :objectproductionplacelocal, value: nil
-  # transform Merge::ConstantValue, target: :objectproductionpeople, value: nil
-  # transform Merge::ConstantValue, target: :objectproductiondategroup, value: nil
-  # transform Merge::ConstantValue, target: :comment, value: nil
-  # transform Merge::ConstantValue, target: :namedcollection, value: nil
-  # transform Merge::ConstantValue, target: :dimensionsummary, value: nil
-  # transform Merge::ConstantValue, target: :limitationtype, value: nil
-  # transform Merge::ConstantValue, target: :limitationlevel, value: nil
-  # transform Merge::ConstantValue, target: :collection, value: nil
-  # transform Merge::ConstantValue, target: :publishto, value: nil
-  # # END SECTION
-
-
-  transform Deduplicate::Flag, on_field: :objectNumber, in_field: :duplicate, using: @deduper
-
-  transform Delete::Fields, fields: %i[id akey m_id item_summary status status_date accession_date
-                                       title_transfer_requested total_cost value_currency item_marked
-                                       reproduction_requested note catalogued]
-
-#  show_me!
-  
-  transform{ |r| @outrows += 1; r }
-  filename = "#{DATADIR}/working/acqitem_collectionobjects_duplicates_flagged.tsv"
-  destination Kiba::Extend::Destinations::CSV,
-    filename: filename,
-    initial_headers: %i[objectNumber],
-    csv_options: TSVOPT
-    
-  post_process do
-    puts "\n\nOBJECT RECORDS FROM ACQ ITEMS WITHOUT CAT (DUPLICATES FLAGGED)"
-    puts "#{@outrows} (of #{@srcrows})"
-    puts "file: #{filename}"
-  end
-end
-Kiba.run(acqitemcatjob)
-
-uniqacqcatjob = Kiba.parse do
-  extend Kiba::Common::DSLExtensions::ShowMe
-  @srcrows = 0
-  @outrows = 0
-
-  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/acqitem_collectionobjects_duplicates_flagged.tsv", csv_options: TSVOPT
-  transform { |r| r.to_h }
-  transform{ |r| @srcrows += 1; r }
-
-  transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'n'
-
-  transform Delete::Fields, fields: %i[duplicate]
-
-#  show_me!
-  transform{ |r| @outrows += 1; r }
-  filename = "#{DATADIR}/cs/acqcat_collectionobjects.csv"
-  destination Kiba::Extend::Destinations::CSV,
-    filename: filename,
-    csv_options: CSVOPT
-  post_process do
-    puts "\n\nUNIQUE OBJECT RECORDS FROM ACQITEMS"
-    puts "#{@outrows} (of #{@srcrows})"
-    puts "file: #{filename}"
-  end
-end
-Kiba.run(uniqacqcatjob)
-
-dupeacqcatjob = Kiba.parse do
-  extend Kiba::Common::DSLExtensions::ShowMe
-  @srcrows = 0
-  @outrows = 0
-
-  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/acqitem_collectionobjects_duplicates_flagged.tsv", csv_options: TSVOPT
-  transform { |r| r.to_h }
-  transform{ |r| @srcrows += 1; r }
-
-  transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'y'
-
-  transform Delete::Fields, fields: %i[duplicate]
-
-#  show_me!
-  transform{ |r| @outrows += 1; r }
-  filename = "#{DATADIR}/reports/DUPLICATE_acqitems_mapped_as_objects.tsv"
-  destination Kiba::Extend::Destinations::CSV,
-    filename: filename,
-    csv_options: TSVOPT
-  post_process do
-    puts "\n\nDUPLICATE OBJECT RECORDS FROM ACQITEMS"
-    puts "#{@outrows} (of #{@srcrows})"
-    puts "file: #{filename}"
-  end
-end
-Kiba.run(dupeacqcatjob)
+Mimsy::NamesForCollectionObject.setup
 
 # create cspace collectionobject records
 catjob = Kiba.parse do
@@ -445,13 +246,22 @@ catjob = Kiba.parse do
   transform do |row|
     pc = row.fetch(:place_collected, nil)
     pcn = row.fetch(:fieldCollectionPlaceLocal, nil)
-    row[:diff] = pc == pcn ? nil : 'y'
+    row[:pcdiff] = pc == pcn ? nil : 'y'
 
     pm = row.fetch(:place_made, nil)
     pmn = row.fetch(:objectProductionPlaceLocal, nil)
-    
+    row[:pmdiff] = pm == pmn ? nil : 'y'
     row
   end
+
+    transform CombineValues::FromFieldsWithDelimiter,
+    sources: %i[pcdiff pmdiff],
+    target: :concat,
+    sep: ' ',
+    delete_sources: false
+
+  transform Delete::Fields, fields: %i[place_collected place_made norm_place_collected norm_place_made pcdiff pmdiff concat]
+
   #transform Rename::Field, from: :place_collected, to: :fieldCollectionPlaceLocal
   #transform Rename::Field, from: :place_made, to: :objectProductionPlaceLocal
   # END SECTION
@@ -638,15 +448,16 @@ uniqcatjob = Kiba.parse do
   transform{ |r| @srcrows += 1; r }
 
   transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'n'
+  transform Merge::ConstantValue, target: :datasource, value: 'cat'
 
   transform Delete::Fields, fields: %i[duplicate]
 
 #  show_me!
   transform{ |r| @outrows += 1; r }
-  filename = "#{DATADIR}/cs/cat_collectionobjects.csv"
+  filename = "#{DATADIR}/working/collectionobjects_uniq.tsv"
   destination Kiba::Extend::Destinations::CSV,
     filename: filename,
-    csv_options: CSVOPT
+    csv_options: TSVOPT
   post_process do
     puts "\n\nUNIQUE OBJECT RECORDS FROM CATALOGUE"
     puts "#{@outrows} (of #{@srcrows})"
@@ -682,29 +493,78 @@ dupecatjob = Kiba.parse do
 end
 Kiba.run(dupecatjob)
 
-# combineuniq = Kiba.parse do
-#   extend Kiba::Common::DSLExtensions::ShowMe
-#   @srcrows = 0
-#   @outrows = 0
+combineuniq = Kiba.parse do
+  extend Kiba::Common::DSLExtensions::ShowMe
+  @srcrows = 0
+  @outrows = 0
 
-#   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/cat_collectionobjects.tsv", csv_options: TSVOPT
-#   transform { |r| r.to_h }
-#  # transform{ |r| @srcrows += 1; r }
-#   #transform{ |r| r }
-# show_me!
-#   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/acqcat_collectionobjects.tsv", csv_options: TSVOPT
-#   transform { |r| r.to_h }
-#   transform{ |r| @srcrows += 1; r }
-#   transform{ |r| r }
-  
-#   filename = "#{DATADIR}/cs/collectionobjects.csv"
-#   destination Kiba::Extend::Destinations::CSV,
-#     filename: filename,
-#     csv_options: CSVOPT
-#   post_process do
-#     puts "\n\nCS COLLECTIONOBJECTS"
-#     puts "#{@outrows} (of #{@srcrows})"
-#     puts "file: #{filename}"
-#   end
-# end
-# Kiba.run(combineuniq)
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/collectionobjects_uniq.tsv", csv_options: TSVOPT
+  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/acqitem_collectionobjects.tsv", csv_options: TSVOPT
+   # transform{ |r| @srcrows += 1; r }
+  #transform{ |r| r }
+  #show_me!
+  transform { |r| r.to_h }
+  transform{ |r| @srcrows += 1; r }
+
+  transform Merge::ConstantValueConditional,
+  fieldmap: {
+    collection: nil,
+    comment: nil,
+    contentconceptassociated: nil,
+    dimension: nil,
+    dimensionsummary: nil,
+    fieldcollectiondategroup: nil,
+    fieldcollectionplacelocal: nil,
+    inscriptioncontent: nil,
+    inscriptioncontentlanguage: nil,
+    inscriptioncontenttranslation: nil,
+    inscriptioncontenttype: nil,
+    inscriptioncontentmethod: nil,
+    inscriptioncontentposition: nil,
+    inscriptioncontentinterpretation: nil,
+    limitationlevel: nil,
+    limitationtype: nil,
+    material: nil,
+    measurementunit: nil,
+    namedcollection: nil,
+    numberofobjects: nil,
+    objectname: nil,
+    objectnamelanguage: nil,
+    objectproductiondategroup: nil,
+    objectproductionorganization: nil,
+    objectproductionorganizationrole: nil,
+    objectproductionpeople: nil,
+    objectproductionperson: nil,
+    objectproductionpersonrole: nil,
+    objectproductionplacelocal: nil,
+    publishto: nil,
+    title: nil,
+    value: nil
+  },
+  conditions: {
+    include: {
+      field_equal: { fieldsets: [
+        {
+          type: :any,
+          matches: [
+            ['row::datasource', 'value::acqitem']
+          ]
+        }
+      ]}
+    }
+  }
+
+transform Delete::Fields, fields: %i[datasource]
+#show_me!
+  transform{ |r| @outrows += 1; r }
+  filename = "#{DATADIR}/cs/collectionobjects.csv"
+  destination Kiba::Extend::Destinations::CSV,
+    filename: filename,
+    csv_options: CSVOPT
+  post_process do
+    puts "\n\nCS COLLECTIONOBJECTS"
+    puts "#{@outrows} (of #{@srcrows})"
+    puts "file: #{filename}"
+  end
+end
+Kiba.run(combineuniq)
