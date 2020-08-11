@@ -92,12 +92,16 @@ lmijob = Kiba.parse do
     target: :currentlocationstoragenote,
     sep: '; '
 
+  transform Clean::RegexpFindReplaceFieldVals,
+    fields: %i[currentlocationstoragenote],
+    find: 'LINEBREAKWASHERE',
+    replace: "\n"
 
 
   transform Rename::Field, from: :id_number, to: :movementreferencenumber
   transform Delete::FieldsExcept, keepfields: %i[movementreferencenumber normallocationstorage currentlocationstorage currentlocationstoragenote]
 
-  show_me!
+  #show_me!
   
   transform{ |r| @outrows += 1; r }
   filename = "#{DATADIR}/cs/movement.csv"
@@ -132,7 +136,7 @@ lmirels = Kiba.parse do
   transform Merge::ConstantValue, target: :objectDocumentType, value: 'CollectionObject'
   transform Merge::ConstantValue, target: :subjectDocumentType, value: 'Movement'
 
-  show_me!
+  #show_me!
   
   transform{ |r| @outrows += 1; r }
   filename = "#{DATADIR}/cs/rels_movement-co.csv"

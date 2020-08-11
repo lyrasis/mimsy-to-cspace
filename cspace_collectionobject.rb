@@ -554,6 +554,11 @@ combineuniq = Kiba.parse do
     }
   }
 
+transform Clean::RegexpFindReplaceFieldVals,
+  fields: %i[briefdescription comment],
+  find: 'LINEBREAKWASHERE',
+  replace: "\n"
+
 transform Delete::Fields, fields: %i[datasource]
 #show_me!
   transform{ |r| @outrows += 1; r }

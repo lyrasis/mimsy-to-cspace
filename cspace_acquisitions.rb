@@ -255,6 +255,12 @@ acqjob = Kiba.parse do
   transform Rename::Field, from: :terms, to: :acquisitionProvisos
   transform Rename::Field, from: :total_offer_price, to: :groupPurchasePriceValue
 
+  transform Clean::RegexpFindReplaceFieldVals,
+    fields: %i[acquisitionProvisos],
+    find: 'LINEBREAKWASHERE',
+    replace: "\n"
+
+
   transform Merge::ConstantValueConditional,
     fieldmap: {acquisitionMethod: 'gift'},
     conditions: {
@@ -298,7 +304,7 @@ acqjob = Kiba.parse do
   transform Delete::Fields, fields: %i[akey status requested_by request_date legal_date total_requested
                                        external_file aiTransferDate]
 
-  show_me!
+  #show_me!
   
   transform{ |r| @outrows += 1; r }
   filename = 'data/working/acquisitions_duplicates_flagged.tsv'

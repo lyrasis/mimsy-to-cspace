@@ -23,10 +23,15 @@ all_subjects = Kiba.parse do
     fields: %i[termsourcenote scopenote],
     find: ';',
     replace: ','
+
+  transform Clean::RegexpFindReplaceFieldVals,
+  fields: %i[termsourcenote scopenote],
+    find: 'LINEBREAKWASHERE',
+    replace: "\n"
   
   transform Delete::Fields, fields: %i[msub_id broaderterm broadernorm termnorm duplicate]
-  transform{ |r| @outrows += 1; r }
 
+  transform{ |r| @outrows += 1; r }
   filename = "#{DATADIR}/cs/concepts.csv"
   destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: CSVOPT
   

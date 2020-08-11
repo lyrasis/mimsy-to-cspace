@@ -12,6 +12,11 @@ personjob = Kiba.parse do
 
   transform FilterRows::FieldEqualTo, action: :keep, field: :individual, value: 'Y'
   transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'n'
+
+    
+  transform CombineValues::FullRecord, target: :search
+  transform FilterRows::FieldMatchRegexp, action: :keep, field: :search, match: 'LINEBREAKWASHERE'
+  transform Delete::Fields, fields: %i[search]
   
   # Uncomment if variations are being treated as alternate term forms
   # transform Copy::Field, from: :preferred_name, to: :termName
@@ -25,8 +30,13 @@ personjob = Kiba.parse do
   transform Rename::Field, from: :note, to: :nameNote
   transform Rename::Field, from: :title_name, to: :title
   transform CombineValues::FromFieldsWithDelimiter, sources: [:brief_bio, :description], target: :bioNote, sep: ' --- '
-  # Keep in case they want to treat variations as alternate term forms
+
+  transform Clean::RegexpFindReplaceFieldVals,
+    fields: %i[nameNote bioNote],
+    find: 'LINEBREAKWASHERE',
+    replace: "\n"
   
+
   transform Delete::Fields, fields: [:individual, :link_id, :duplicate, :preferred_name]
 
   # transform FilterRows::FieldPopulated, action: :keep, field: :birthDateGroup
