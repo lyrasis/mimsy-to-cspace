@@ -12,12 +12,7 @@ personjob = Kiba.parse do
 
   transform FilterRows::FieldEqualTo, action: :keep, field: :individual, value: 'Y'
   transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'n'
-
     
-  transform CombineValues::FullRecord, target: :search
-  transform FilterRows::FieldMatchRegexp, action: :keep, field: :search, match: 'LINEBREAKWASHERE'
-  transform Delete::Fields, fields: %i[search]
-  
   # Uncomment if variations are being treated as alternate term forms
   # transform Copy::Field, from: :preferred_name, to: :termName
   transform Rename::Field, from: :birth_date, to: :birthDateGroup
