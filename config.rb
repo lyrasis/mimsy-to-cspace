@@ -6,6 +6,17 @@ require 'kiba/extend'
 require 'pry'
 require 'facets/kernel/blank'
 
+require_relative 'prelim_acqitems'
+require_relative 'prelim_cat'
+require_relative 'prelim_concept'
+require_relative 'prelim_condition'
+require_relative 'prelim_inscription'
+require_relative 'prelim_locations'
+require_relative 'prelim_measurement_prepare'
+require_relative 'prelim_names_for_co'
+require_relative 'prelim_people_build'
+require_relative 'prelim_place'
+
 TSVOPT = {headers: true, col_sep: "\t", header_converters: :symbol, converters: [:stripplus]}
 LOCCSVOPT = {headers: true, header_converters: :symbol, converters: [:stripplus]}
 MVDELIM = ';'
