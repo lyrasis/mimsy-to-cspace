@@ -7,8 +7,8 @@ module Mimsy
   module Cat
     def self.setup
       # Use either make_working or limit_to_test_records
-      Mimsy::Cat.make_working
-#      Mimsy::Cat.limit_to_test_records
+#      Mimsy::Cat.make_working
+      Mimsy::Cat.limit_to_test_records
       Mimsy::Cat.exclude_loans
     end
 

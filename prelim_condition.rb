@@ -2,6 +2,10 @@ require_relative 'config'
 
 # filter_records
 #   only keep condition rows linked to objects we are migrating
+# cs_condition
+#   produce CS conditioncheck records
+# cs_rels
+#   produce CS object <-> condition check relationships
 
 module Mimsy
   module Condition
@@ -23,8 +27,8 @@ module Mimsy
         @outrows = 0
 
         @cat = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/catalogue.tsv",
-                                             csvopt: TSVOPT,
-                                             keycolumn: :mkey)
+                                        csvopt: TSVOPT,
+                                        keycolumn: :mkey)
 
         source Kiba::Common::Sources::CSV,
           filename: "#{DATADIR}/mimsy/condition.tsv",
@@ -53,11 +57,11 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-     Kiba.run(limit)
+      Kiba.run(limit)
     end
 
     def cs_condition
-      #filter_records
+      filter_records
 
       transform = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
@@ -96,6 +100,7 @@ module Mimsy
           target: :conditionchecknote,
           sep: "\n\n"
 
+        # SECTION BELOW cleans and splits up condition field into different facets
         transform Copy::Field, from: :condition, to: :origcond
         
         transform do |row|
@@ -116,6 +121,9 @@ module Mimsy
             elsif cond.match?(/^.$/)
               row[:cp] = nil
               row[:condition] = nil
+            elsif cond.start_with?('lf-002')
+              row[:cp] = cond
+              row[:condition] = nil
             else
               row[:cp] = nil
             end
@@ -130,12 +138,27 @@ module Mimsy
           casesensitive: false
         transform Clean::RegexpFindReplaceFieldVals,
           fields: %i[condition],
+          find: 'exzcellent|excellenty',
+          replace: 'excellent',
+          casesensitive: false
+        transform Clean::RegexpFindReplaceFieldVals,
+          fields: %i[condition],
+          find: 'excellent: stable',
+          replace: 'excellent, stable',
+          casesensitive: false
+        transform Clean::RegexpFindReplaceFieldVals,
+          fields: %i[condition],
           find: 'overall-; ',
           replace: 'Overall: ',
           casesensitive: false
         transform Clean::RegexpFindReplaceFieldVals,
           fields: %i[condition],
-          find: '(stucture|Strucutre|structrue):',
+          find: 'Overall good',
+          replace: 'Overall: good',
+          casesensitive: false
+        transform Clean::RegexpFindReplaceFieldVals,
+          fields: %i[condition],
+          find: '(stucture|Strucutre|structrue|strucure):',
           replace: 'Structure: ',
           casesensitive: false
         transform Clean::RegexpFindReplaceFieldVals,
@@ -162,8 +185,6 @@ module Mimsy
           find: '([^|]) *(Overall|Surface|Structure)[:;,]',
           replace: '\1|\2:',
           casesensitive: false
-
-#        transform FilterRows::FieldEqualTo, action: :keep, field: :conditioncheckrefnumber, value: '87-018.028.1522'
         
         transform do |row|
           %i[overall surface structure nofacet].each{ |f| row[f] = nil }
@@ -179,19 +200,18 @@ module Mimsy
             if condpipe.size > 1
               other = []
               condarr = condpipe.map{ |c| c.split(':') }
-#              binding.pry
               condarr.each do |c|
                 if c.size == 2
-                type = c[0].downcase
-                if type.start_with?('overall')
-                  row[:overall] = c[1]
-                elsif type.start_with?('surface')
-                  row[:surface] = c[1]
-                elsif type.start_with?('structure')
-                  row[:structure] = c[1]
-                else
-                  other << c.join(':')
-                end
+                  type = c[0].downcase
+                  if type.start_with?('overall')
+                    row[:overall] = c[1]
+                  elsif type.start_with?('surface')
+                    row[:surface] = c[1]
+                  elsif type.start_with?('structure')
+                    row[:structure] = c[1]
+                  else
+                    other << c.join(':')
+                  end
                 else
                   other << c.join(':')
                 end
@@ -241,21 +261,191 @@ module Mimsy
           fields: %i[overall surface structure nofacet],
           find: '^(\w+),(\w+)$',
           replace: '\1, \2'
+        # END SECTION
 
-        # anything that appears before overall: -- map to conditionnotelhmc
-        # anything in parens -- map to conditionnotelhmc
+        # SECTION BELOW combines values into CS facet fields
+        #        transform FilterRows::FieldEqualTo, action: :keep, field: :conditioncheckrefnumber, value: '94-029.01.10606'
+
+        transform do |row|
+          %i[overall surface structure nofacet].each do |f|
+            # add all the fields we'll need so they exist in every row
+            row["#{f}_cond".to_sym] = '%NULLVALUE%'
+            row["#{f}_facet".to_sym] = '%NULLVALUE%'
+            row["#{f}_date".to_sym] = '%NULLVALUE%'
+            row["#{f}_note".to_sym] = '%NULLVALUE%'
+
+            val = row.fetch(f, nil)
+            next if val.blank?
+
+            # populate *_condition
+            row["#{f}_cond".to_sym] = val
+
+            # populate *_facet
+            case f
+            when :overall
+              facet = 'Overall'
+            when :surface
+              facet = 'Surface'
+            when :structure
+              facet = 'Structure'
+            when :nofacet
+              facet = '%NULLVALUE%'
+            end
+            row["#{f}_facet".to_sym] = facet
+
+            # populate *_date
+            d = row.fetch(:conditioncheckassessmentdate, nil)
+            row["#{f}_date".to_sym] = d unless d.blank?
+
+            # populate *_note
+            n = row.fetch(:cp, nil)            
+            row["#{f}_note".to_sym] = n unless n.blank?
+          end
+
+          # handle notes where we were not able to extract any structured facet data
+          chk = %i[overall surface structure nofacet].map{ |f| row.fetch(f, nil) }.uniq
+          if chk.size == 1 && chk[0].nil?
+            v = row.fetch(:cp, nil)
+            unless v.blank?
+              row[:nofacet_note] = v
+              d = row.fetch(:conditioncheckassessmentdate, nil)
+              row[:nofacet_date] = d unless d.blank?
+            end
+          end
+          row
+        end
+
+        # compile CS rows
+        transform do |row|
+          c = []
+          f = []
+          d = []
+          n = []
+          %i[overall surface structure nofacet].each do |facet|
+            fields = %w[cond facet date note].map{ |f| "#{facet}_#{f}" }.map(&:to_sym)
+            vals = fields.map{ |f| row.fetch(f, nil) }
+            next if vals.uniq == ['%NULLVALUE%']
+            c << vals[0]
+            f << vals[1]
+            d << vals[2]
+            n << vals[3]
+          end
+          if c.size == 0
+            row[:conditionlhmc] = nil
+            row[:conditionfacetlhmc] = nil
+            row[:conditiondatelhmc] = nil
+            row[:conditionnotelhmc] = nil
+          else
+            row[:conditionlhmc] = c.join(';')
+            row[:conditionfacetlhmc] = f.join(';')
+            row[:conditiondatelhmc] = d.join(';')
+            row[:conditionnotelhmc] = n.join(';')
+          end
+          row
+        end
+
+        # delete intermediate rows
+        transform do |row|
+          %i[overall surface structure nofacet].each do |facet|
+            %w[cond facet date note].map{ |f| "#{facet}_#{f}" }.map(&:to_sym).each{ |f| row.delete(f) }
+            row.delete(facet)
+          end
+          row.delete(:cp)
+          row.delete(:origcond)
+          row
+        end
+        # END SECTION
+
+        # SECTION BELOW moves subsequent condition check reasons to field that can be joined into note
+        transform do |row|
+          ccr = row.fetch(:conditioncheckreason, nil)
+          ccrs = ccr.split(';').map(&:strip) if ccr
+          if !ccr.blank? && ccrs.size > 1
+            row[:conditioncheckreason] = ccrs[0]
+            row[:addlreason] = ccrs[1..-1].join('; ')
+          else
+            row[:addlreason] = nil	
+          end
+
+          ccr = row.fetch(:conditioncheckreason, nil)
+          unless ccr.blank?
+            ccrd = ccr.downcase
+            if ccrd.match?(/^des?ins?tall/)
+              row[:conditioncheckreason] = 'exhibition'
+              row[:addlreason] = ccr
+            elsif ccrd.start_with?('loan')
+              row[:conditioncheckreason] = 'loanin'
+              row[:addlreason] = ccr
+            elsif ccrd == 'annual review'
+              row[:conditioncheckreason] = 'annualreview'
+            elsif ccrd == 'acquisition'
+              row[:conditioncheckreason] = 'newacquisition'
+            elsif ccrd == 'accession'
+              row[:conditioncheckreason] = 'newacquisition'
+            elsif ccrd == 'catalogue'
+              row[:conditioncheckreason] = 'catalogue'
+            elsif ccrd == 'hair brush'
+              row[:conditioncheckreason] = nil
+            end
+          end
+          row
+        end
+
+        transform Prepend::ToFieldValue, field: :addlreason, value: 'Additional reason: '
+
+        transform CombineValues::FromFieldsWithDelimiter,
+          sources: %i[addlreason conditionchecknote],
+          target: :conditionchecknote,
+          sep: "\n\n"
+
+        # END SECTION
+        
+        # SECTION BELOW moves subsequent condition checkers to field that can be joined into note
+        transform do |row|
+          cc = row.fetch(:conditionchecker, nil)
+          cc = cc.split(';').map(&:strip) if cc
+          if !cc.blank? && cc.size > 1
+            row[:conditionchecker] = cc[0]
+            row[:addlchecker] = cc[1..-1].join('; ')
+          else
+            row[:addlchecker] = nil
+          end
+          row
+        end
+
+        transform Prepend::ToFieldValue, field: :addlchecker, value: 'Additional checker(s)/assessor(s): '
+        
+        # transform Clean::RegexpFindReplaceFieldVals,
+        #   fields: %i[conditionchecker],
+        #   find: "\\\",
+        #   replace: ''
+        transform Clean::RegexpFindReplaceFieldVals,
+          fields: %i[conditionchecker],
+          find: ' \(conservator\)',
+          replace: '',
+          casesensitive: false
+        transform Clean::RegexpFindReplaceFieldVals,
+          fields: %i[conditionchecker],
+          find: 'Book, Victoria',
+          replace: 'Victoria Book',
+          casesensitive: false
+
+        transform CombineValues::FromFieldsWithDelimiter,
+          sources: %i[addlchecker conditionchecknote],
+          target: :conditionchecknote,
+          sep: "\n\n"
+        # END SECTION
         
         transform Delete::Fields, fields: %i[m_id condition current_record priority_flag2]
 
-#        show_me!
-        #        transform FilterRows::FieldPopulated, action: :keep, field: :cp
+        #show_me!
 
         transform{ |r| @outrows += 1; r }
-        filename = "#{DATADIR}/working/cs_condition.tsv"
-        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT,
-          initial_headers: %i[conditioncheckrefnumber overall surface structure nofacet cp origcond]
+        filename = "#{DATADIR}/cs/conditioncheck.csv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: LOCCSVOPT,
+          initial_headers: %i[conditioncheckrefnumber]
         post_process do
-          label = 'cs condtion records (working)'
+          label = 'cs conditioncheck records'
           puts "\n\n#{label.upcase}"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
@@ -264,6 +454,46 @@ module Mimsy
       Kiba.run(transform)
     end
 
+    def cs_rels
+      filter_records
 
+      rels = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        @srcrows = 0
+        @outrows = 0
+        
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/working/condition.tsv",
+          csv_options: TSVOPT
+        transform{ |r| r.to_h }
+        transform{ |r| @srcrows += 1; r }
+
+        transform CombineValues::FromFieldsWithDelimiter,
+          sources: %i[objid condkey],
+          target: :objectIdentifier,
+          sep: '.',
+          delete_sources: false
+
+        transform Merge::ConstantValue, target: :objectDocumentType, value: 'ConditionCheck'
+
+        transform Rename::Field, from: :objid, to: :subjectIdentifier
+        transform Merge::ConstantValue, target: :subjectDocumentType, value: 'CollectionObject'
+
+        transform Delete::FieldsExcept, keepfields: %i[objectIdentifier objectDocumentType subjectIdentifier subjectDocumentType]
+
+        #show_me!
+
+        transform{ |r| @outrows += 1; r }
+        filename = "#{DATADIR}/cs/rels_co-conditioncheck.csv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: LOCCSVOPT
+        post_process do
+          label = 'cs conditioncheck <-> object relationships'
+          puts "\n\n#{label.upcase}"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+      Kiba.run(rels)
+    end
   end
 end
