@@ -245,6 +245,13 @@ acqjob = Kiba.parse do
     fields: [:method],
     find: ' - no ack\. necessary',
     replace: ''
+
+  transform Clean::RegexpFindReplaceFieldVals,
+    fields: [:method],
+    find: ' ',
+    replace: ''
+
+  transform Clean::DowncaseFieldValues, fields: %i[method]
   # END SECTION
   
   transform Rename::Field, from: :authorized_by, to: :acquisitionAuthorizer

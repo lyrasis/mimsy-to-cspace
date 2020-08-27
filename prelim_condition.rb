@@ -2,17 +2,22 @@ require_relative 'config'
 
 # filter_records
 #   only keep condition rows linked to objects we are migrating
+# cs_condition_prep
+#   produce CS conditioncheck pre-records. Used to create relationships. Some fields need
+#     to be deleted before these are real CS records
 # cs_condition
 #   produce CS conditioncheck records
 # cs_rels
 #   produce CS object <-> condition check relationships
+# test_delete
+#   prepare old version of test records for deletion
 
 module Mimsy
   module Condition
     extend self
 
     PRIORITY = {
-      '0' => nil,
+      '0' => 'low',
       '' => nil,
       nil => nil,
       '1' => 'high'
@@ -60,13 +65,15 @@ module Mimsy
       Kiba.run(limit)
     end
 
-    def cs_condition
+    def cs_condition_prep
       filter_records
 
       transform = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
+        @deduper = {}
+        @counter = 1
         
         source Kiba::Common::Sources::CSV,
           filename: "#{DATADIR}/working/condition.tsv",
@@ -74,19 +81,38 @@ module Mimsy
         transform{ |r| r.to_h }
         transform{ |r| @srcrows += 1; r }
 
+        # SECTION BELOW prepares conditioncheckrefnumber
+        #  prepends CC, appends conditiondate if present
+        #  flags any duplicates, adds integer to differentiate
+        transform Copy::Field, from: :condition_date, to: :suffix
+        
         transform CombineValues::FromFieldsWithDelimiter,
-          sources: %i[objid condkey],
+          sources: %i[objid suffix],
           target: :conditioncheckrefnumber,
-          sep: '.'
+          sep: '.',
+          delete_sources: false
+        transform Prepend::ToFieldValue, field: :conditioncheckrefnumber, value: 'CC.'
+        transform Deduplicate::Flag, on_field: :conditioncheckrefnumber, in_field: :duplicate, using: @deduper
+        transform do |row|
+          duplicate = row[:duplicate]
+          return row if duplicate.blank?
+
+          if duplicate == 'y'
+            ref_number = row[:conditioncheckrefnumber]
+            row[:conditioncheckrefnumber] = "#{ref_number}.#{@counter}"
+            @counter += 1
+          end
+          row
+        end
+        # END SECTION
 
         transform Rename::Field, from: :condition_date, to: :conditioncheckassessmentdate
-        transform Rename::Field, from: :examined_by, to: :conditionchecker
+        transform Rename::Field, from: :examined_by, to: :conditioncheckerperson
         transform Rename::Field, from: :purpose, to: :conditioncheckreason
-        transform Rename::Field, from: :status_date, to: :nextconditioncheckdate
 
         transform Replace::FieldValueWithStaticMapping,
           source: :priority_flag1,
-          target: :objectauditcategory,
+          target: :conservationtreatmentpriority,
           mapping: PRIORITY,
           fallback_val: nil
 
@@ -402,10 +428,10 @@ module Mimsy
         
         # SECTION BELOW moves subsequent condition checkers to field that can be joined into note
         transform do |row|
-          cc = row.fetch(:conditionchecker, nil)
+          cc = row.fetch(:conditioncheckerperson, nil)
           cc = cc.split(';').map(&:strip) if cc
           if !cc.blank? && cc.size > 1
-            row[:conditionchecker] = cc[0]
+            row[:conditioncheckerperson] = cc[0]
             row[:addlchecker] = cc[1..-1].join('; ')
           else
             row[:addlchecker] = nil
@@ -416,16 +442,16 @@ module Mimsy
         transform Prepend::ToFieldValue, field: :addlchecker, value: 'Additional checker(s)/assessor(s): '
         
         # transform Clean::RegexpFindReplaceFieldVals,
-        #   fields: %i[conditionchecker],
+        #   fields: %i[conditioncheckerperson],
         #   find: "\\\",
         #   replace: ''
         transform Clean::RegexpFindReplaceFieldVals,
-          fields: %i[conditionchecker],
+          fields: %i[conditioncheckerperson],
           find: ' \(conservator\)',
           replace: '',
           casesensitive: false
         transform Clean::RegexpFindReplaceFieldVals,
-          fields: %i[conditionchecker],
+          fields: %i[conditioncheckerperson],
           find: 'Book, Victoria',
           replace: 'Victoria Book',
           casesensitive: false
@@ -436,7 +462,39 @@ module Mimsy
           sep: "\n\n"
         # END SECTION
         
-        transform Delete::Fields, fields: %i[m_id condition current_record priority_flag2]
+        transform Delete::Fields, fields: %i[m_id condition current_record status_date priority_flag2 duplicate]
+
+        #show_me!
+
+        transform{ |r| @outrows += 1; r }
+        filename = "#{DATADIR}/working/conditioncheck_pre.tsv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT,
+          initial_headers: %i[conditioncheckrefnumber]
+        post_process do
+          label = 'pre-conditioncheck records'
+          puts "\n\n#{label.upcase}"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+      Kiba.run(transform)
+    end
+
+    def cs_condition
+      cs_condition_prep
+
+      transform = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        @srcrows = 0
+        @outrows = 0
+        
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/working/conditioncheck_pre.tsv",
+          csv_options: TSVOPT
+        transform{ |r| r.to_h }
+        transform{ |r| @srcrows += 1; r }
+
+        transform Delete::Fields, fields: %i[condkey objid suffix]
 
         #show_me!
 
@@ -455,7 +513,7 @@ module Mimsy
     end
 
     def cs_rels
-      filter_records
+      cs_conditiono_prep
 
       rels = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
@@ -463,7 +521,7 @@ module Mimsy
         @outrows = 0
         
         source Kiba::Common::Sources::CSV,
-          filename: "#{DATADIR}/working/condition.tsv",
+          filename: "#{DATADIR}/working/conditioncheck_pre.tsv",
           csv_options: TSVOPT
         transform{ |r| r.to_h }
         transform{ |r| @srcrows += 1; r }
@@ -474,6 +532,7 @@ module Mimsy
           sep: '.',
           delete_sources: false
 
+        transform Rename::Field, from: :conditioncheckrefnumber, to: :objectIdentifier
         transform Merge::ConstantValue, target: :objectDocumentType, value: 'ConditionCheck'
 
         transform Rename::Field, from: :objid, to: :subjectIdentifier
@@ -488,6 +547,42 @@ module Mimsy
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: LOCCSVOPT
         post_process do
           label = 'cs conditioncheck <-> object relationships'
+          puts "\n\n#{label.upcase}"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+      Kiba.run(rels)
+    end
+
+    def test_delete
+      cs_condition_prep
+
+      rels = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        @srcrows = 0
+        @outrows = 0
+        
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/working/conditioncheck_pre.tsv",
+          csv_options: TSVOPT
+        transform{ |r| r.to_h }
+        transform{ |r| @srcrows += 1; r }
+
+        transform CombineValues::FromFieldsWithDelimiter,
+          sources: %i[objid condkey],
+          target: :conditioncheckrefnumber,
+          sep: '.'
+
+        transform Delete::FieldsExcept, keepfields: %i[conditioncheckrefnumber]
+
+        #show_me!
+
+        transform{ |r| @outrows += 1; r }
+        filename = "#{DATADIR}/working/conditioncheck_initial_test_delete.csv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: LOCCSVOPT
+        post_process do
+          label = 'conditioncheck records to delete'
           puts "\n\n#{label.upcase}"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
