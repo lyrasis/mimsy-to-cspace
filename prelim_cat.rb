@@ -7,12 +7,41 @@ module Mimsy
   module Cat
     def self.setup
       # Use either make_working or limit_to_test_records
-      Mimsy::Cat.make_working
-#      Mimsy::Cat.limit_to_test_records
+      #Mimsy::Cat.make_working
+      Mimsy::Cat.limit_to_test_records
       Mimsy::Cat.exclude_loans
     end
 
-    
+    def self.prep_item_names
+      @job = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        @srcrows = 0
+        @outrows = 0
+
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/mimsy/item_names.tsv",
+          csv_options: TSVOPT
+        transform{ |r| r.to_h }
+        transform{ |r| @srcrows += 1; r }
+
+        transform FilterRows::FieldEqualTo, action: :reject, field: :prior_name, value: 'Y'
+        transform FilterRows::FieldPopulated, action: :keep, field: :item_name
+        transform Delete::Fields, fields: %i[line_number id prior_name]
+        
+        #show_me!
+        transform{ |r| @outrows += 1; r }
+        filename = "#{DATADIR}/working/item_names.tsv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
+        post_process do
+          label = 'prelim_cat/prep_item_names'
+          puts "\n\n#{label.upcase}"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+      Kiba.run(@job)
+    end
+
     def self.make_working
       @working = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe

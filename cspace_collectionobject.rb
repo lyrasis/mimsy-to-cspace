@@ -9,6 +9,7 @@ require_relative 'prelim_names_for_co'
 
 Mimsy::AcqItems.setup
 Mimsy::Cat.setup
+Mimsy::Cat.prep_item_names
 Mimsy::Place.setup
 Mimsy::Measurements.setup
 Mimsy::Inscription.setup
@@ -44,6 +45,9 @@ catjob = Kiba.parse do
   @places = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/place_norm_lookup.tsv",
                                           csvopt: TSVOPT,
                                           keycolumn: :normplace)
+  @inames = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/item_names.tsv",
+                                          csvopt: TSVOPT,
+                                          keycolumn: :mkey)
 
   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/catalogue.tsv", csv_options: TSVOPT
   # Ruby's CSV gives us "CSV::Row" but we want Hash
@@ -67,6 +71,47 @@ catjob = Kiba.parse do
     delim: MVDELIM
   # END SECTION
 
+  # SECTION BELOW merges in item_name data and keeps any non-duplicate info
+  transform Rename::Field, from: :item_name, to: :objectname
+  transform Copy::Field, from: :objectname, to: :origobjname
+    transform Merge::MultiRowLookup,
+    lookup: @inames,
+    keycolumn: :mkey,
+    fieldmap: {
+      :inameval => :item_name
+    },
+    delim: MVDELIM
+  transform CombineValues::FromFieldsWithDelimiter,
+    sources: %i[objectname inameval],
+    target: :objectname,
+    sep: ';',
+    delete_sources: false
+  transform Clean::DowncaseFieldValues, fields: %i[objectname]
+  transform do |row|
+    objname = row.fetch(:objectname, nil)
+    if objname.blank?
+      row
+    else
+      objname = objname[';'] ? objname.split(';').map(&:strip).join(';') : objname
+      row[:objectname] = objname
+      row
+    end
+  end
+  transform Deduplicate::FieldValues, fields: %i[objectname], sep: ';'
+  #show_me!
+
+  transform do |row|
+    orig = row.fetch(:origobjname, '')
+    new = row.fetch(:objectname, '')
+    orig = orig.nil? ? '' : orig
+    new = new.nil? ? '' : new
+    if new.split(';').length > orig.split(';').length
+      row
+    else
+    end
+  end
+  # END SECTION
+  
   # SECTION BELOW merges in typed objectProductionPerson or objectProductionOrganization
   #  values and associated roles
   transform Merge::MultiRowLookup,
@@ -156,33 +201,43 @@ catjob = Kiba.parse do
     grouped_fields: %i[objectProductionPersonRole],
     sep: MVDELIM
   
-   transform CombineValues::AcrossFieldGroup,
-     fieldmap: {
-       objectProductionOrganization: %i[makerOrganization objectProductionOrganization],
-       objectProductionOrganizationRole: %i[makerOrganizationRole objectProductionOrganizationRole]
-     },
-     sep: MVDELIM
+  transform CombineValues::AcrossFieldGroup,
+    fieldmap: {
+      objectProductionOrganization: %i[makerOrganization objectProductionOrganization],
+      objectProductionOrganizationRole: %i[makerOrganizationRole objectProductionOrganizationRole]
+    },
+    sep: MVDELIM
   transform Deduplicate::GroupedFieldValues,
     on_field: :objectProductionOrganization,
     grouped_fields: %i[objectProductionOrganizationRole],
     sep: MVDELIM
-  #END SECTION
+  # END SECTION
   
   transform Rename::Field, from: :id_number, to: :objectNumber
   transform Rename::Field, from: :description, to: :briefDescription
 
-  transform Rename::Field, from: :item_name, to: :objectName
-  transform Merge::ConstantValueConditional,
-    fieldmap: {objectNameLanguage: 'English'},
-    conditions: {
-      exclude: {
-        field_empty: {
-          fieldsets: [
-            {fields: %w[row::objectName]}
-          ]
-        }
-      }
-    }
+  transform do |row|
+    on = row.fetch(:objectname, nil)
+    if on.blank?
+      row[:objectnamelanguage] = nil
+    else
+      val = on[';'] ? on.split(';').map{ |e| 'English' }.join(';') : 'English'
+      row[:objectnamelanguage] = val
+    end
+    row
+  end
+# this isn't working for some reason I don't have time to fix...
+  # transform Merge::ConstantValueConditional,
+  #   fieldmap: {objectnamelanguage: 'English'},
+  #   conditions: {
+  #     exclude: {
+  #       field_empty: {
+  #         fieldsets: [
+  #           {fields: %w[row::objectname]}
+  #         ]
+  #       }
+  #     }
+  #   }
 
   transform Rename::Field, from: :item_count, to: :numberOfObjects
   transform Rename::Field, from: :materials, to: :material
@@ -370,8 +425,8 @@ catjob = Kiba.parse do
   
     transform Merge::ConstantValueConditional,
     fieldmap: {
-      objectName: 'Manuscript',
-      objectNameLanguage: 'English'
+      objectname: 'Manuscript',
+      objectnamelanguage: 'English'
     },
     conditions: {
       include: {
@@ -412,8 +467,6 @@ catjob = Kiba.parse do
     target: :inventoryStatus,
     mapping: INVSTATUS,
     fallback_val: :nil
-
-
   # END SECTION
 
   transform Deduplicate::Flag, on_field: :objectNumber, in_field: :duplicate, using: @deduper
@@ -539,7 +592,9 @@ combineuniq = Kiba.parse do
     objectproductionplacelocal: nil,
     publishto: nil,
     title: nil,
-    value: nil
+    value: nil,
+    origobjname: nil,
+    inameval: nil
   },
   conditions: {
     include: {
