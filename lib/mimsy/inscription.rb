@@ -1,9 +1,16 @@
-require_relative 'config'
+# frozen_string_literal: true
+
+# clean_type_values
+#  - does a bunch of stuff to make type values closer to a controlled list
+# for_merge
+#  - prepares data from inscriptions table for merge into CS object records
 
 module Mimsy
   module Inscription
-    def self.setup
-      @typeclean = Kiba.parse do
+    extend self
+    
+    def clean_type_values
+      typeclean = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -89,8 +96,13 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
+      Kiba.run(typeclean)
+    end
 
-      @inscrip = Kiba.parse do
+    def for_merge
+      clean_type_values unless File.file?("#{DATADIR}/working/inscriptiontype_clean.tsv")
+      
+      inscrip = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -237,9 +249,7 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-
-      Kiba.run(@typeclean)
-      Kiba.run(@inscrip)
+      Kiba.run(inscrip)
     end
   end
 end

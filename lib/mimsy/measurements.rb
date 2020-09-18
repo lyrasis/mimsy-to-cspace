@@ -1,16 +1,42 @@
-require_relative 'config'
+# frozen_string_literal: true
+
+# initial_prep
+#  - only keep data for objects being migrated
+#  - flags rows with no measurement data
+#  - flags various problem data, including duplicates
+# duplicates
+#  - prepares report of rows having duplicate data for the same object
+# fractions
+#  - prepares report of rows having fractions instead of floats as values
+# empty
+#  - prepares report of rows having no measurement data
+# kept
+#  - prepares problem-free data we are keeping for further processing
+# reshape
+#  - reshape dimension values, units, etc. closer to what is required for CollectionSpace
+# derive_initial_lookup_table
+#  - creates initial lookup table from reshaped data by mkey and measurements display value
+# compile_dimension_subgroups
+#  - join dimension subgroup values under respective measurement display values
+# for_merge
+#  - joins measurement field groups (with their respective dimension subgroups) for each object
+#  - this data is now ready to merge into a CollectionSpace object
 
 module Mimsy
   module Measurements
-    def self.setup
-      @flagjob = Kiba.parse do
+    extend self
+
+    def initial_prep
+      Mimsy::Cat.setup unless File.file?("#{DATADIR}/working/catalogue.tsv")
+      
+      init = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
         @deduper = {}
         @cat = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/catalogue.tsv",
-                                             csvopt: TSVOPT,
-                                             keycolumn: :mkey)
+                                        csvopt: TSVOPT,
+                                        keycolumn: :mkey)
         
         source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/measurements.tsv", csv_options: TSVOPT
         transform { |r| r.to_h }
@@ -118,9 +144,13 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@flagjob)
+      Kiba.run(init)
+    end
 
-      @dupejob = Kiba.parse do
+    def duplicates
+      initial_prep unless File.file?("#{DATADIR}/working/measurements_flagged.tsv")
+      
+      dupes = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -142,9 +172,13 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@dupejob)      
+      Kiba.run(dupes)
+    end
 
-      @fractionjob = Kiba.parse do
+    def fractions
+      initial_prep unless File.file?("#{DATADIR}/working/measurements_flagged.tsv")
+
+      fractionjob = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -166,9 +200,13 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@fractionjob)      
+      Kiba.run(fractionjob)      
+    end
 
-      @emptyjob = Kiba.parse do
+    def empty
+      initial_prep unless File.file?("#{DATADIR}/working/measurements_flagged.tsv")
+      
+      emptyjob = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -191,9 +229,13 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@emptyjob)
+      Kiba.run(emptyjob)
+    end
 
-      @keepjob = Kiba.parse do
+    def kept
+      initial_prep unless File.file?("#{DATADIR}/working/measurements_flagged.tsv")
+      
+      keepjob = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -217,16 +259,19 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@keepjob)
-
-
-      @reshapejob = Kiba.parse do
+      Kiba.run(keepjob)
+    end
+    
+    def reshape
+      kept unless File.file?("#{DATADIR}/working/measurements_keep.tsv")
+      
+      reshapejob = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
         @m = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/measurements_keep.tsv",
-                                             csvopt: TSVOPT,
-                                             keycolumn: :mkey)
+                                      csvopt: TSVOPT,
+                                      keycolumn: :mkey)
 
 
         source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/measurements_keep.tsv", csv_options: TSVOPT
@@ -287,9 +332,13 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@reshapejob)
+      Kiba.run(reshapejob)
+    end
 
-      @initlkupjob = Kiba.parse do
+    def derive_initial_lookup_table
+      reshape unless File.file?("#{DATADIR}/working/measurements_shaped.tsv")
+      
+      initlkupjob = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -316,17 +365,21 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@initlkupjob)      
+      Kiba.run(initlkupjob)      
+    end
 
-      @combinedispjob = Kiba.parse do
+    def compile_dimension_subgroups
+      derive_initial_lookup_table unless File.file?("#{DATADIR}/working/measurements_lkup1.tsv")
+      
+      combinedispjob = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
         @deduper = {}
 
         @lkup = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/measurements_lkup1.tsv",
-                                           csvopt: TSVOPT,
-                                           keycolumn: :mkey_disp)
+                                         csvopt: TSVOPT,
+                                         keycolumn: :mkey_disp)
         source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/measurements_shaped.tsv", csv_options: TSVOPT
         transform { |r| r.to_h }
         transform{ |r| @srcrows += 1; r }
@@ -368,17 +421,21 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@combinedispjob)      
+      Kiba.run(combinedispjob)      
+    end
 
-      @fieldgrpjob = Kiba.parse do
+    def for_merge
+      compile_dimension_subgroups unless File.file?("#{DATADIR}/working/measurements_subgroups.tsv")
+      
+      fieldgrpjob = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
         @deduper = {}
 
         @lkup = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/measurements_subgroups.tsv",
-                                           csvopt: TSVOPT,
-                                           keycolumn: :mkey)
+                                         csvopt: TSVOPT,
+                                         keycolumn: :mkey)
         source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/measurements_shaped.tsv", csv_options: TSVOPT
         transform { |r| r.to_h }
         transform{ |r| @srcrows += 1; r }
@@ -410,32 +467,7 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@fieldgrpjob)      
-
-      #       @seclkupjob = Kiba.parse do
-      #   extend Kiba::Common::DSLExtensions::ShowMe
-      #   @srcrows = 0
-      #   @outrows = 0
-
-      #   source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/measurements_flagged.tsv", csv_options: TSVOPT
-      #   transform { |r| r.to_h }
-      #   transform{ |r| @srcrows += 1; r }
-
-      #   transform FilterRows::FieldEqualTo, action: :keep, field: :fraction, value: 'y'
-      #   #  show_me!
-      #   transform{ |r| @outrows += 1; r }
-      #   filename = "#{DATADIR}/reports/FRACTION_measurements.tsv"
-      #   destination Kiba::Extend::Destinations::CSV,
-      #     filename: filename,
-      #     csv_options: TSVOPT
-      #   post_process do
-      #     puts "\n\nMEASUREMENTS CONTAINING FRACTIONS"
-      #     puts "#{@outrows} (of #{@srcrows})"
-      #     puts "file: #{filename}"
-      #   end
-      # end
-      # Kiba.run(@seclkupjob)      
-
+      Kiba.run(fieldgrpjob)      
     end
   end
 end

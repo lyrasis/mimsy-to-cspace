@@ -4,80 +4,9 @@ require_relative 'prelim_cat'
 Mimsy::Cat.setup
 
 # creates table of acquisitions keys
-acqkeys = Kiba.parse do
-extend Kiba::Common::DSLExtensions::ShowMe
-  @deduper = {}
-  @srcrows = 0
-  @outrows = 0
 
-  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/acquisitions.tsv", csv_options: TSVOPT
-  # Ruby's CSV gives us "CSV::Row" but we want Hash
-  transform { |r| r.to_h }
-  transform{ |r| @srcrows += 1; r }
-
-  # this only processes rows with ref_number
-  transform FilterRows::FieldPopulated, action: :keep, field: :ref_number
-
-  # flag duplicates and remove
-  transform Deduplicate::Flag, on_field: :ref_number, in_field: :duplicate, using: @deduper
-  transform FilterRows::FieldEqualTo, action: :reject, field: :duplicate, value: 'y'
-
-  transform do |row|
-    keep = %i[akey ref_number]
-    row.keys.each{ |k| row.delete(k) unless keep.include?(k) }
-    row
-  end
-  #show_me!
-  
-  transform{ |r| @outrows += 1; r }
-  filename = "#{DATADIR}/working/acq_link.tsv"
-  destination Kiba::Extend::Destinations::CSV,
-    filename: filename,
-    csv_options: TSVOPT
-  
-  post_process do
-    puts "\n\nACQUISITION LINKAGE"
-    puts "#{@outrows} (of #{@srcrows})"
-    puts "file: #{filename}"
-  end  
-end
-Kiba.run(acqkeys)
 
 # creates table of acquisition items keys
-acqitemkeys = Kiba.parse do
-extend Kiba::Common::DSLExtensions::ShowMe
-  @deduper = {}
-  @srcrows = 0
-  @outrows = 0
-
-  source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/acquisition_items.tsv", csv_options: TSVOPT
-  # Ruby's CSV gives us "CSV::Row" but we want Hash
-  transform { |r| r.to_h }
-  transform{ |r| @srcrows += 1; r }
-
-  # this only processes rows with id_number
-  transform FilterRows::FieldPopulated, action: :keep, field: :id_number
-
-  transform do |row|
-    keep = %i[akey m_id id_number]
-    row.keys.each{ |k| row.delete(k) unless keep.include?(k) }
-    row
-  end
-  #show_me!
-  
-  transform{ |r| @outrows += 1; r }
-  filename = "#{DATADIR}/working/acqitem_link.tsv"
-  destination Kiba::Extend::Destinations::CSV,
-    filename: filename,
-    csv_options: TSVOPT
-  
-  post_process do
-    puts "\n\nACQUISITION ITEM LINKAGE"
-    puts "#{@outrows} (of #{@srcrows})"
-    puts "file: #{filename}"
-  end  
-end
-Kiba.run(acqitemkeys)
 
 # creates table of AcqItem CollectionObject relationships to Acquisition procedures
 acqitem_acq_rel = Kiba.parse do
@@ -95,8 +24,7 @@ extend Kiba::Common::DSLExtensions::ShowMe
   transform { |r| r.to_h }
   transform{ |r| @srcrows += 1; r }
 
-  # Only process rows we used to create a stub (not cataloged) collectionobject
-  transform FilterRows::FieldPopulated, action: :reject, field: :m_id
+
 
   transform Merge::MultiRowLookup,
     lookup: @acqkeys,

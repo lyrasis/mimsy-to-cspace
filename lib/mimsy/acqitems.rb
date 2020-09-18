@@ -1,18 +1,25 @@
-require_relative 'config'
+# frozen_string_literal: true
 
+# flag_dupes
+#   - flags rows having duplicate ID numbers if at least one row has an m_id (all rows marked y)
+#   - flags rows that have duplicate ID numbers
+# one_cat_report
+#   Produces report of rows in acquisition_items where there is more than one row with the
+#     same id_number, and some are flagged as uncatalogued
+# duplicates
+#  Produces report of duplicate acquisition_items which will not be migrated
+# uncat_items
+#  Produces table ready for mapping to collectionobject
+# id_lookup
+#  Purpose: use to create object-acquisition relationships (where objects are derived from acq_items table)
+#  Keeps only rows with an id number but no MKEY linking to a catalogue row
+#  outputs acquisition id, object id
 module Mimsy
   module AcqItems
-    def self.setup
-      # PROCESSES
-      # flagjob
-      #   - flags rows having duplicate ID numbers if at least one row has an m_id (all rows marked y)
-      #   - flags rows that have duplicate ID numbers
-      # onecatreport
-      #   Produces report of rows in acquisition_items where there is more than one row with the
-      #     same id_number, and some are flagged as uncatalogued
+    extend self
 
-      
-      @flagjob = Kiba.parse do
+    def flag_dupes      
+      flagjob = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @deduper = {}
         @srcrows = 0
@@ -86,9 +93,12 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@flagjob)
+      Kiba.run(flagjob)
+    end
 
-      @onecatreport = Kiba.parse do
+    def one_cat_report
+      flag_dupes unless File.file?("#{DATADIR}/working/acqitem_duplicates_flagged.tsv")
+      onecatreport = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -114,9 +124,13 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@onecatreport)
+      Kiba.run(onecatreport)
+    end
 
-      @dupeacqcatjob = Kiba.parse do
+    def duplicates
+      flag_dupes unless File.file?("#{DATADIR}/working/acqitem_duplicates_flagged.tsv")
+      
+      dupeacqcatjob = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -143,9 +157,12 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@dupeacqcatjob)
+      Kiba.run(dupeacqcatjob)
+    end
 
-      @acqitemcatjob = Kiba.parse do
+    def uncat_items
+      flag_dupes unless File.file?("#{DATADIR}/working/acqitem_duplicates_flagged.tsv")
+      acqitemcatjob = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @deduper = {}
         @srcrows = 0
@@ -213,7 +230,42 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@acqitemcatjob)
+      Kiba.run(acqitemcatjob)
+    end
+
+    def id_lookup
+      acqitemkeys = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        @deduper = {}
+        @srcrows = 0
+        @outrows = 0
+
+        source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/mimsy/acquisition_items.tsv", csv_options: TSVOPT
+        # Ruby's CSV gives us "CSV::Row" but we want Hash
+        transform { |r| r.to_h }
+        transform{ |r| @srcrows += 1; r }
+
+        # this only processes rows with id_number
+        transform FilterRows::FieldPopulated, action: :keep, field: :id_number
+        # Only process rows we used to create a stub (not cataloged) collectionobject
+        transform FilterRows::FieldPopulated, action: :reject, field: :m_id
+        
+        transform Delete::FieldsExcept, keepfields: %i[akey id_number]
+        #show_me!
+        
+        transform{ |r| @outrows += 1; r }
+        filename = "#{DATADIR}/working/acqitem_link.tsv"
+        destination Kiba::Extend::Destinations::CSV,
+          filename: filename,
+          csv_options: TSVOPT
+        
+        post_process do
+          puts "\n\nACQUISITION ITEM LINKAGE"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end  
+      end
+      Kiba.run(acqitemkeys)
     end
   end
 end

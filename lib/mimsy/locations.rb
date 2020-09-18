@@ -1,25 +1,32 @@
-require_relative 'config'
-require_relative 'prelim_cat'
+# frozen_string_literal: true
+
+# SOURCES
+# norm_location_mapping.tsv
+#  - normValuesToNew tab of locations_working.xlsx, manually converted to TSV
+# loc_hier_lookup.tsv
+#  - locHierToAuthorityName tab of locations_working.xlsx, manually converted to TSV
+# METHODS
+# loc_lookup
+#  - remove extraneous columns from norm_location_mapping.tsv and save as
+#    loc_lookup_initial.tsv
+# prepare_object_loc_data
+#  - pare down catalogue.csv to only ID and two location columns.
+#  - Removes rows with no location data.
+#  - Adds normalized location columns (normloc normhomeloc)
+#  - Merges in newloc, newhome, locnote, and homenote from loc_lookup_initial.tsv
+#  - Concatenates newloc and new home in one column for testing
+# objects_with_unmapped_locations
+#  - writes out report of rows from obj_prepare where testing column is blank.
+# finalize_for_mapping
+#   Includes only rows from obj_prepare where testing column is populated
+#   Includes only columns that will be used in preparing CollectionSpace LMI
 
 module Mimsy
   module Location
-    # SOURCES
-    # norm_location_mapping.tsv -- normValuesToNew tab of locations_working.xlsx, manually converted to TSV
-    # loc_hier_lookup.tsv -- locHierToAuthorityName tab of locations_working.xlsx, manually converted to TSV
-    # PROCESSES
-    # loc_lookup_initial - remove extraneous columns from norm_location_mapping.tsv and save as
-    #   loc_lookup_initial.tsv
-    # obj_prepare - pare down catalogue.csv to only ID and two location columns.
-    #   Removes rows with no location data.
-    #   Adds normalized location columns (normloc normhomeloc)
-    #   Merges in newloc, newhome, locnote, and homenote from loc_lookup_initial.tsv
-    #   Concatenates newloc and new home in one column for testing
-    # unmapped_loc_report - writes out report of rows from obj_prepare where testing column is blank.
-    # obj_locs_clean
-    #   Includes only rows from obj_prepare where testing column is populated
-    #   Includes only columns that will be used in preparing LMI
-    def self.loc_lookup
-      @loc_lookup_initial = Kiba.parse do
+    extend self
+    
+    def loc_lookup
+      loc_lookup_initial = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -46,13 +53,14 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@loc_lookup_initial)
+      Kiba.run(loc_lookup_initial)
     end
 
-    def self.obj_prepare
-      Mimsy::Cat.setup
-      Mimsy::Location.loc_lookup
-      @obj_prepare = Kiba.parse do
+    def prepare_object_loc_data
+      Mimsy::Cat.setup unless File.file?("#{DATADIR}/working/catalogue.tsv")
+      loc_lookup unless File.file?("#{DATADIR}/working/loc_lookup_initial.tsv")
+      
+      prepare = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -145,13 +153,13 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@obj_prepare)
+      Kiba.run(prepare)
     end
 
-    def self.report_objects_with_unmapped_locations
-      Mimsy::Locations.obj_prepare
+    def objects_with_unmapped_locations
+      prepare_object_loc_data unless File.file?("#{DATADIR}/working/cat_locs_prep.tsv")
       
-      @unmapped_loc_report = Kiba.parse do
+      unmapped_loc_report = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -177,11 +185,11 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@unmapped_loc_report)
+      Kiba.run(unmapped_loc_report)
     end
     
-    def self.obj_locs_clean
-      Mimsy::Location.obj_prepare
+    def finalize_for_mapping
+      prepare_object_loc_data unless File.file?("#{DATADIR}/working/cat_locs_prep.tsv")
       
       @obj_locs_clean = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe

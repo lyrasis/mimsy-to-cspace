@@ -1,3 +1,5 @@
+require 'fileutils'
+
 require 'kiba'
 require 'kiba-common/sources/csv'
 require 'kiba-common/destinations/csv'
@@ -6,21 +8,29 @@ require 'kiba/extend'
 require 'pry'
 require 'facets/kernel/blank'
 
-require_relative 'prelim_acqitems'
-require_relative 'prelim_cat'
-require_relative 'prelim_concept'
-require_relative 'prelim_condition'
-require_relative 'prelim_inscription'
-require_relative 'prelim_locations'
-require_relative 'prelim_measurement_prepare'
-require_relative 'prelim_names_for_co'
-require_relative 'prelim_people_build'
-require_relative 'prelim_place'
+require_relative 'lib/mimsy'
+require_relative 'lib/cspace'
 
+# :test or :full -- which set of collectionobjects will be used as base
+MODE = :full
 TSVOPT = {headers: true, col_sep: "\t", header_converters: :symbol, converters: [:stripplus]}
 LOCCSVOPT = {headers: true, header_converters: :symbol, converters: [:stripplus]}
 MVDELIM = ';'
 DATADIR = File.expand_path('~/code/mimsy-to-cspace/data')
+
+# SECTION BELOW moves previous working files to backup directory
+timestamp = Time.now.strftime("%y-%m-%d_%H-%M")
+backupdir = "#{DATADIR}/backup"
+workingdir = "#{DATADIR}/working"
+
+FileUtils.cd(workingdir) do
+Dir.each_child(workingdir) do |filename|
+  new_name = "#{timestamp}_#{filename}"
+  FileUtils.mv(filename, "#{backupdir}/#{new_name}")
+  end
+end
+# END SECTION
+
 LANGUAGES = {
   'eng' => 'English'
 }
@@ -49,3 +59,4 @@ MEDIATYPE = {
   'IMAGE' => 'still_image',
   'DOCUMENT' => 'document'
 }
+

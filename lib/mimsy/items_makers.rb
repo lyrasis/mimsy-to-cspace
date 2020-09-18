@@ -1,12 +1,15 @@
-require_relative 'config'
+# frozen_string_literal: true
+
+# for_merge
+#  - creates working copy of items_makers with preferred_name & individual columns merged
+#    in from people, role column inserted based on relationship, affiliation, and
+#    prior attribution
 
 module Mimsy
-  module NamesForCollectionObject
-    def self.setup
-      # PROCESSES
-      # namesjob - creates working copy of items_makers with preferred_name & individual columns merged in from people,
-      #  role column inserted based on relationship, affiliation, and prior attribution
-      @namesjob = Kiba.parse do
+  module ItemsMakers
+    extend self
+    def for_merge
+      namesjob = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -57,7 +60,7 @@ module Mimsy
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@namesjob)
+      Kiba.run(namesjob)
     end
   end
 end

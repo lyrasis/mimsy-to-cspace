@@ -1,19 +1,34 @@
-require_relative 'config'
+# frozen_string_literal: true
+
+# with_variants
+#  - merge subject_variations terms into subjects
+#  - create basic CSpace concept field structure
+#  - normalize and populate duplicates
+# duplicates
+#  - report of duplicate terms -- match in Cspace will be on string, so we'll only be importing
+#    one record for each string. Deduplication is done on normalized values (normalization
+#    rules used to create string-based ID in CSpace)
+# unlinked_variants
+#  - reports any subject_variations without matches to subjects
+# n/a -- merge_var_orphans -- add results from above to list of subjects
+# extract_broader_terms
+#  - create working table of broader terms, with CSpace fields. Lookup from merge_var result to
+#    identify and remove any that are already in the subject list
+# unique_subjects
+#  - extracts only the unique subjects
+# item_subject_lookup
+#  - creates lookup table matching string associated with object/item (which may vary slightly in
+#    form) with the form used to create Concept authority
+# all
+#  - combine main subject list with broader subject list
+#  - deduplicate again
 
 module Mimsy
-  module Concept
-    def self.setup
-      # merge_var -- merge subject_variations terms into subjects; create basic CSpace concept field structure;
-      #   normalize and populate duplicates
-      # dupe_report -- report of duplicate terms -- match in Cspace will be on string, so we'll only be importing
-      #   one record for each string. Deduplication is done on normalized values (normalization rules used to create
-      #   string-based ID in CSpace)
-      # var_report -- check for subject_variations without matches to subjects
-      # n/a -- merge_var_orphans -- add results from above to list of subjects
-      # extract_broader -- create working table of broader terms, with CSpace fields. Lookup from merge_var result to
-      #   identify and remove any that are already in the subject list
-      # all_concepts -- combine main subject list with broader, deduplicate again
-      @merge_var = Kiba.parse do
+  module Subject
+    extend self
+
+    def with_variants
+      merge_var = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -88,25 +103,28 @@ module Mimsy
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/working/concepts_with_vars.tsv"
+        filename = "#{DATADIR}/working/subjects_with_vars.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nDUPE-FLAGGED CONCEPTS WITH VARIATIONS MERGED IN"
+          puts "\n\nDUPE-FLAGGED SUBJECTS WITH VARIATIONS MERGED IN"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
       end
+      Kiba.run(merge_var)
+    end
 
-      Kiba.run(@merge_var)
+    def duplicates
+      with_variants unless File.file?("#{DATADIR}/working/subjects_with_vars.tsv")
       
-      @dupe_report = Kiba.parse do
+      dupe_report = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
 
         source Kiba::Common::Sources::CSV,
-          filename: "#{DATADIR}/working/concepts_with_vars.tsv",
+          filename: "#{DATADIR}/working/subjects_with_vars.tsv",
           csv_options: TSVOPT
 
         transform{ |r| r.to_h }
@@ -117,18 +135,20 @@ module Mimsy
         
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/reports/DUPLICATE_concepts.tsv"
+        filename = "#{DATADIR}/reports/DUPLICATE_subjects.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nDUPLICATE CONCEPTS"
+          puts "\n\nDUPLICATE SUBJECTS"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@dupe_report)
-      
-      @var_report = Kiba.parse do
+      Kiba.run(dupe_report)
+    end
+
+    def unlinked_variants
+      var_report = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
@@ -156,24 +176,27 @@ module Mimsy
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/reports/variant_concepts_with_no_prefTerm.tsv"
+        filename = "#{DATADIR}/reports/variant_subjects_with_no_prefTerm.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nVARIANT CONCEPTS WITH NO PREFERRED TERM"
+          puts "\n\nVARIANT SUBJECTS WITH NO PREFERRED TERM"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@var_report)
+      Kiba.run(var_report)
+    end
 
-      @extract_broader = Kiba.parse do
+    def extract_broader_terms
+      with_variants unless File.file?("#{DATADIR}/working/subjects_with_vars.tsv")
+      extract_broader = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
         @deduper = {}
 
-        @subs = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/concepts_with_vars.tsv",
+        @subs = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/subjects_with_vars.tsv",
                                          csvopt: TSVOPT,
                                          keycolumn: :termnorm)
 
@@ -226,24 +249,27 @@ module Mimsy
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/working/concepts_broader.tsv"
+        filename = "#{DATADIR}/working/subjects_broader.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nBROADER CONCEPTS"
+          puts "\n\nBROADER SUBJECTS"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@extract_broader)
-      
-      @subs_deduped = Kiba.parse do
+      Kiba.run(extract_broader)
+    end
+
+    def unique_subjects
+      with_variants unless File.file?("#{DATADIR}/working/subjects_with_vars.tsv")
+      subs_deduped = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
 
         source Kiba::Common::Sources::CSV,
-          filename: "#{DATADIR}/working/concepts_with_vars.tsv",
+          filename: "#{DATADIR}/working/subjects_with_vars.tsv",
           csv_options: TSVOPT
 
         transform{ |r| r.to_h }
@@ -253,28 +279,32 @@ module Mimsy
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/working/concepts_deduped.tsv"
+        filename = "#{DATADIR}/working/subjects_deduped.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nDEDUPLICATED CONCEPTS"
+          puts "\n\nDEDUPLICATED SUBJECTS"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@subs_deduped)
+      Kiba.run(subs_deduped)
+    end
+
+    def item_subject_lookup
+      unique_subjects unless File.file?("#{DATADIR}/working/subjects_deduped.tsv")
       
-      @create_co_lookup = Kiba.parse do
+      create_co_lookup = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
 
-        @subsall = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/concepts_with_vars.tsv",
+        @subsall = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/subjects_with_vars.tsv",
                                             csvopt: TSVOPT,
                                             keycolumn: :msub_id)
-        @subsuniq = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/concepts_deduped.tsv",
-                                            csvopt: TSVOPT,
-                                            keycolumn: :termnorm)
+        @subsuniq = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/subjects_deduped.tsv",
+                                             csvopt: TSVOPT,
+                                             keycolumn: :termnorm)
 
         source Kiba::Common::Sources::CSV,
           filename: "#{DATADIR}/mimsy/items_subjects.tsv",
@@ -297,28 +327,33 @@ module Mimsy
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/working/concept_item_lookup.tsv"
+        filename = "#{DATADIR}/working/subject_item_lookup.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nCONCEPT-ITEM LOOKUP"
+          puts "\n\nSUBJECT-ITEM LOOKUP"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@create_co_lookup)
-      
-      @all_concepts = Kiba.parse do
+      Kiba.run(create_co_lookup)
+    end
+
+    def all
+      unique_subjects unless File.file?("#{DATADIR}/working/subjects_deduped.tsv")
+      extract_broader_terms unless File.file?("#{DATADIR}/working/subjects_broader.tsv")
+
+      all_subjects = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
         @deduper = {}
         
         source Kiba::Common::Sources::CSV,
-          filename: "#{DATADIR}/working/concepts_deduped.tsv",
+          filename: "#{DATADIR}/working/subjects_deduped.tsv",
           csv_options: TSVOPT
         source Kiba::Common::Sources::CSV,
-          filename: "#{DATADIR}/working/concepts_broader.tsv",
+          filename: "#{DATADIR}/working/subjects_broader.tsv",
           csv_options: TSVOPT
         
         transform{ |r| r.to_h }
@@ -331,16 +366,16 @@ module Mimsy
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/working/concepts_all.tsv"
+        filename = "#{DATADIR}/working/subjects_all.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nCONCEPTS COMBINED"
+          puts "\n\nSUBJECTS COMBINED"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
       end
-      Kiba.run(@all_concepts)
+      Kiba.run(all_subjects)
     end
   end
 end

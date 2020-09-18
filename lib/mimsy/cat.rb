@@ -1,48 +1,30 @@
-require_relative 'config'
+# frozen_string_literal: true
 
-# @remove_loans -- removes loan rows as per
-#   #https://3.basecamp.com/3410311/buckets/16953827/todos/2708290043
-# @test_recs -- keep only records with mkeys listed in provided/co_select files
+# setup
+#  - excludes loan rows as per https://3.basecamp.com/3410311/buckets/16953827/todos/2708290043
+#  - if run in :test mode, limits to test records; otherwise makes working copy of catalogue
+#PRIVATE
+# limit_to_test_records
+#  - keep only records with mkeys listed in provided/co_select files
+# make_working
+#  - makes working copy of catalogue.csv
+# exclude_loans
+#  - remove loans not included in migration
+
 module Mimsy
   module Cat
-    def self.setup
-      # Use either make_working or limit_to_test_records
-      #Mimsy::Cat.make_working
-      Mimsy::Cat.limit_to_test_records
-      Mimsy::Cat.exclude_loans
-    end
-
-    def self.prep_item_names
-      @job = Kiba.parse do
-        extend Kiba::Common::DSLExtensions::ShowMe
-        @srcrows = 0
-        @outrows = 0
-
-        source Kiba::Common::Sources::CSV,
-          filename: "#{DATADIR}/mimsy/item_names.tsv",
-          csv_options: TSVOPT
-        transform{ |r| r.to_h }
-        transform{ |r| @srcrows += 1; r }
-
-        transform FilterRows::FieldEqualTo, action: :reject, field: :prior_name, value: 'Y'
-        transform FilterRows::FieldPopulated, action: :keep, field: :item_name
-        transform Delete::Fields, fields: %i[line_number id prior_name]
-        
-        #show_me!
-        transform{ |r| @outrows += 1; r }
-        filename = "#{DATADIR}/working/item_names.tsv"
-        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
-        post_process do
-          label = 'prelim_cat/prep_item_names'
-          puts "\n\n#{label.upcase}"
-          puts "#{@outrows} (of #{@srcrows})"
-          puts "file: #{filename}"
-        end
+    extend self
+    def setup
+      case MODE
+      when :full
+        make_working
+      when :test
+        limit_to_test_records
       end
-      Kiba.run(@job)
+      exclude_loans
     end
 
-    def self.make_working
+    private_class_method def make_working
       @working = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
@@ -68,7 +50,7 @@ module Mimsy
       Kiba.run(@working)
     end
 
-    def self.limit_to_test_records
+    private_class_method def limit_to_test_records
       @testrecs = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
@@ -141,7 +123,7 @@ module Mimsy
       Kiba.run(@testrecs)
     end
 
-    def self.exclude_loans
+    private_class_method def exclude_loans
       @remove_loans = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         

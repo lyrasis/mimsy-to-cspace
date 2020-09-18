@@ -1,11 +1,11 @@
 require_relative 'config'
-require_relative 'prelim_acqitems'
-require_relative 'prelim_cat'
-require_relative 'prelim_place'
-require_relative 'prelim_measurement_prepare'
-require_relative 'prelim_inscription'
-require_relative 'prelim_concept'
-require_relative 'prelim_names_for_co'
+# require_relative 'prelim_acqitems'
+# require_relative 'prelim_cat'
+# require_relative 'prelim_place'
+# require_relative 'prelim_measurement_prepare'
+# require_relative 'prelim_inscription'
+# require_relative 'prelim_concept'
+# require_relative 'prelim_names_for_co'
 
 Mimsy::AcqItems.setup
 Mimsy::Cat.setup
@@ -613,6 +613,11 @@ transform Clean::RegexpFindReplaceFieldVals,
   fields: %i[briefdescription comment],
   find: 'LINEBREAKWASHERE',
   replace: "\n"
+
+transform Clean::RegexpFindReplaceFieldVals,
+  fields: %i[briefdescription comment],
+  find: 'TABCHARACTERWASHERE',
+  replace: "     "
 
 transform Delete::Fields, fields: %i[datasource]
 #show_me!

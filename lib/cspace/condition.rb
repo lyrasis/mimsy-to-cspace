@@ -1,18 +1,16 @@
-require_relative 'config'
+# frozen_string_literal: true
 
 # filter_records
 #   only keep condition rows linked to objects we are migrating
-# cs_condition_prep
+# condition_prep
 #   produce CS conditioncheck pre-records. Used to create relationships. Some fields need
 #     to be deleted before these are real CS records
-# cs_condition
+# csv
 #   produce CS conditioncheck records
-# cs_rels
+# relationship_to_object
 #   produce CS object <-> condition check relationships
-# test_delete
-#   prepare old version of test records for deletion
 
-module Mimsy
+module Cspace
   module Condition
     extend self
 
@@ -24,7 +22,7 @@ module Mimsy
     }
     
     def filter_records
-      Mimsy::Cat.setup
+      Mimsy::Cat.setup unless File.file?("#{DATADIR}/working/catalogue.tsv")
 
       limit = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
@@ -66,7 +64,7 @@ module Mimsy
     end
 
     def cs_condition_prep
-      filter_records
+      filter_records unless File.file?("#{DATADIR}/working/condition.tsv")
 
       transform = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
@@ -480,8 +478,8 @@ module Mimsy
       Kiba.run(transform)
     end
 
-    def cs_condition
-      cs_condition_prep
+    def csv
+      cs_condition_prep unless File.file?("#{DATADIR}/working/conditioncheck_pre.tsv")
 
       transform = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
@@ -512,8 +510,8 @@ module Mimsy
       Kiba.run(transform)
     end
 
-    def cs_rels
-      cs_conditiono_prep
+    def relationship_to_object
+      cs_condition_prep unless File.file?("#{DATADIR}/working/conditioncheck_pre.tsv")
 
       rels = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
@@ -547,42 +545,6 @@ module Mimsy
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: LOCCSVOPT
         post_process do
           label = 'cs conditioncheck <-> object relationships'
-          puts "\n\n#{label.upcase}"
-          puts "#{@outrows} (of #{@srcrows})"
-          puts "file: #{filename}"
-        end
-      end
-      Kiba.run(rels)
-    end
-
-    def test_delete
-      cs_condition_prep
-
-      rels = Kiba.parse do
-        extend Kiba::Common::DSLExtensions::ShowMe
-        @srcrows = 0
-        @outrows = 0
-        
-        source Kiba::Common::Sources::CSV,
-          filename: "#{DATADIR}/working/conditioncheck_pre.tsv",
-          csv_options: TSVOPT
-        transform{ |r| r.to_h }
-        transform{ |r| @srcrows += 1; r }
-
-        transform CombineValues::FromFieldsWithDelimiter,
-          sources: %i[objid condkey],
-          target: :conditioncheckrefnumber,
-          sep: '.'
-
-        transform Delete::FieldsExcept, keepfields: %i[conditioncheckrefnumber]
-
-        #show_me!
-
-        transform{ |r| @outrows += 1; r }
-        filename = "#{DATADIR}/working/conditioncheck_initial_test_delete.csv"
-        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: LOCCSVOPT
-        post_process do
-          label = 'conditioncheck records to delete'
           puts "\n\n#{label.upcase}"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
