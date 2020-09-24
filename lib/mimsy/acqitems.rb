@@ -180,7 +180,7 @@ module Mimsy
         transform FilterRows::FieldPopulated, action: :keep, field: :id_number
 
 
-        transform Rename::Field, from: :id_number, to: :objectNumber
+        transform Rename::Field, from: :id_number, to: :objectnumber
         transform Rename::Field, from: :transfer_date, to: :assocstructureddategroup
         transform Merge::ConstantValueConditional,
           fieldmap: { assocdatetype: 'acquisition transfer date' },
@@ -200,9 +200,9 @@ module Mimsy
         transform do |row|
           summary = row.fetch(:item_summary, nil)
           if summary
-            row[:briefDescription] = summary.split('LINEBREAKWASHERE').join(' -- ')
+            row[:briefdescription] = summary.split('LINEBREAKWASHERE').join(' -- ')
           else
-            row[:briefDescription] = nil
+            row[:briefdescription] = nil
           end
           row
         end
@@ -212,8 +212,8 @@ module Mimsy
         transform Merge::ConstantValue, target: :datasource, value: 'acqitem'
         # END SECTION
 
-        transform Delete::FieldsExcept, keepfields: %i[objectNumber assocstructureddategroup assocdatetype
-                                                       inventoryStatus briefDescription]
+        transform Delete::FieldsExcept, keepfields: %i[objectnumber assocstructureddategroup assocdatetype
+                                                       inventorystatus briefdescription]
 
         #show_me!
         
@@ -221,7 +221,7 @@ module Mimsy
         filename = "#{DATADIR}/working/acqitem_collectionobjects.tsv"
         destination Kiba::Extend::Destinations::CSV,
           filename: filename,
-          initial_headers: %i[objectNumber],
+          initial_headers: %i[objectnumber],
           csv_options: TSVOPT
         
         post_process do
@@ -247,10 +247,8 @@ module Mimsy
 
         # this only processes rows with id_number
         transform FilterRows::FieldPopulated, action: :keep, field: :id_number
-        # Only process rows we used to create a stub (not cataloged) collectionobject
-        transform FilterRows::FieldPopulated, action: :reject, field: :m_id
-        
-        transform Delete::FieldsExcept, keepfields: %i[akey id_number]
+
+        transform Delete::FieldsExcept, keepfields: %i[akey id_number m_id]
         #show_me!
         
         transform{ |r| @outrows += 1; r }

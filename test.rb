@@ -10,4 +10,6 @@ require_relative 'config'
 #Mimsy::ItemsMakers.for_merge
 #Mimsy::People.all_people
 #Mimsy::Place.normalized_place_lookup
-Cspace::Work.lookup
+#Cspace::Work.lookup
+#Mimsy::RelatedItem.prep
+Mimsy::Notepad.prep

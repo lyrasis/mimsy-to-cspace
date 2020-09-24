@@ -2,6 +2,7 @@
 
 require_relative 'config'
 
+## issues
 #Mimsy::AcqItems.one_cat_report
 #Mimsy::AcqItems.duplicates
 #Mimsy::Location.objects_with_unmapped_locations
@@ -16,4 +17,8 @@ require_relative 'config'
 #Cspace::Media.duplicate_procedures
 #Cspace::Media.duplicate_relationships
 #Cspace::Media.orphan_media
-Cspace::Work.duplicates
+#Cspace::Work.duplicates
+#Cspace::CollectionObject.duplicates
+
+# informational
+Mimsy::Notepad.report
