@@ -8,10 +8,13 @@
 #  Purpose: use to create object-acquisition relationships
 #  Keeps only rows with acquisition reference number, deduplicates on reference number
 #  outputs only acquisition record ID and acquisition reference number
+# no_acquisition_items
+#  - Writes report of acquisitions not linked to any acquisition items.
+
 module Mimsy
   module Acquisition
     extend self
-
+    
     def working
       wrkacq = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
@@ -106,6 +109,43 @@ module Mimsy
         end  
       end
       Kiba.run(acqkeys)
+    end
+
+    def no_acquisition_items
+      acq_no_acq_items = Kiba.parse do
+        @srcrows = 0
+        @outrows = 0
+
+        @acqitems = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/acquisition_items.tsv",
+                                             csvopt: TSVOPT,
+                                             keycolumn: :akey)
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/mimsy/acquisitions.tsv",
+          csv_options: TSVOPT
+
+        transform{ |r| r.to_h }
+
+        transform{ |r| @srcrows += 1; r }
+
+        transform Merge::CountOfMatchingRows,
+          lookup: @acqitems,
+          keycolumn: :akey,
+          targetfield: :ai_ct
+
+        transform FilterRows::FieldEqualTo, action: :keep, field: :ai_ct, value: 0
+
+        transform{ |r| @outrows += 1; r }
+        
+        filename = "#{DATADIR}/reports/acq_no_acq_items.tsv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
+        
+        post_process do
+          puts "\n\nACQ WITH NO ACQ ITEMS"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+      Kiba.run(acq_no_acq_items)
     end
   end
 end

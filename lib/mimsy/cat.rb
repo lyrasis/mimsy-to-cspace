@@ -6,6 +6,15 @@
 # build_relationships
 #  - transforms working copy of catalogue into relationship info where relationship data
 #    is present
+# no_acq_items
+#  - writes report of catalogue rows not linked to any acquisition items
+#  - we will not be able to relate these objects to any acquisition procedure
+# multi_acq_items
+#  - writes report of catalogue rows linked to more than one acquisition item
+#  - this situation is irregular and will need to be cleaned up either before or after migration
+# one_acq_item
+#  - writes informational report of catalogue rows linked to one acquisition item as expected
+
 #PRIVATE
 # limit_to_test_records
 #  - keep only records with mkeys listed in provided/co_select files
@@ -239,7 +248,136 @@ module Mimsy
       end
       Kiba.run(relsjob)
     end
+
+    def no_acq_items
+      setup unless File.file?("#{DATADIR}/working/catalogue.tsv")
+      
+      cat_no_acq_items = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        
+        @srcrows = 0
+        @outrows = 0
+
+        @acqitems = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/acquisition_items.tsv",
+                                             csvopt: TSVOPT,
+                                             keycolumn: :m_id)
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/working/catalogue.tsv",
+          csv_options: TSVOPT
+
+        transform{ |r| r.to_h }
+
+        transform{ |r| @srcrows += 1; r }
+
+        transform Merge::CountOfMatchingRows,
+          lookup: @acqitems,
+          keycolumn: :mkey,
+          targetfield: :ai_ct
+
+        transform FilterRows::FieldEqualTo, action: :keep, field: :ai_ct, value: 0
+
+        #  show_me!
+        
+        transform{ |r| @outrows += 1; r }
+        
+        filename = "#{DATADIR}/reports/cat_no_acq_items.tsv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
+        
+        post_process do
+          puts "\n\nCAT WITH NO ACQ ITEMS"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+      Kiba.run(cat_no_acq_items)
+    end
+
+    def multi_acq_items
+      setup unless File.file?("#{DATADIR}/working/catalogue.tsv")
+      
+      cat_multiple_acq_items = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        
+        @srcrows = 0
+        @outrows = 0
+
+        @acqitems = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/acquisition_items.tsv",
+                                             csvopt: TSVOPT,
+                                             keycolumn: :m_id)
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/working/catalogue.tsv",
+          csv_options: TSVOPT
+
+        transform{ |r| r.to_h }
+
+        transform{ |r| @srcrows += 1; r }
+
+        transform Merge::CountOfMatchingRows,
+          lookup: @acqitems,
+          keycolumn: :mkey,
+          targetfield: :ai_ct
+
+        transform FilterRows::FieldValueGreaterThan, action: :keep, field: :ai_ct, value: 1
+        
+        #  show_me!
+        
+        transform{ |r| @outrows += 1; r }
+        
+        filename = "#{DATADIR}/reports/cat_multiple_acq_items.tsv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
+        
+        post_process do
+          puts "\n\nCAT WITH MULTIPLE ACQ ITEMS"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+      Kiba.run(cat_multiple_acq_items)
+    end
     
+    def one_acq_item
+      setup unless File.file?("#{DATADIR}/working/catalogue.tsv")
+      
+      cat_one_acq_items = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        
+        @srcrows = 0
+        @outrows = 0
+
+        @acqitems = Lookup.csv_to_multi_hash(file: "#{DATADIR}/mimsy/acquisition_items.tsv",
+                                             csvopt: TSVOPT,
+                                             keycolumn: :m_id)
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/working/catalogue.tsv",
+          csv_options: TSVOPT
+
+        transform{ |r| r.to_h }
+
+        transform{ |r| @srcrows += 1; r }
+
+        transform Merge::CountOfMatchingRows,
+          lookup: @acqitems,
+          keycolumn: :mkey,
+          targetfield: :ai_ct
+
+        transform FilterRows::FieldEqualTo, action: :keep, field: :ai_ct, value: 1
+
+        #  show_me!
+        
+        transform{ |r| @outrows += 1; r }
+        
+        filename = "#{DATADIR}/reports_ok/cat_one_acq_items.tsv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
+        
+        post_process do
+          puts "\n\nCAT WITH ONE ACQ ITEMS"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+      Kiba.run(cat_one_acq_items)
+    end
+        
     private_class_method def make_working
       @working = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe

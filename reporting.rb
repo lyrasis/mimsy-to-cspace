@@ -2,8 +2,22 @@
 
 require_relative 'config'
 
-## issues
+## issues for migration
+##  If anything comes up here, we'll need to do some more work
+Mimsy::AcquisitionSources.new_names
+Mimsy::DisposalSources.new_names
+Mimsy::ItemsMakers.new_names
+Mimsy::ItemsPeopleSources.new_names
+Mimsy::SourceDetails.new_names
+
+## issues for client
+#Mimsy::AcqItems.no_acquisition
+#Mimsy::AcqItems.multi_acquisition
+#Mimsy::AcqItems.multi_cat
 #Mimsy::AcqItems.one_cat_report
+#Mimsy::Cat.no_acq_items
+#Mimsy::Cat.multi_acq_items
+#Mimsy::Acquisition.no_acquisition_items
 #Mimsy::AcqItems.duplicates
 #Mimsy::Location.objects_with_unmapped_locations
 #Mimsy::Measurements.duplicates
@@ -21,4 +35,8 @@ require_relative 'config'
 #Cspace::CollectionObject.duplicates
 
 # informational
-Mimsy::Notepad.report
+#Mimsy::AcqItems.one_acquisition
+#Mimsy::AcqItems.no_cat
+#Mimsy::AcqItems.one_cat
+#Mimsy::Cat.one_acq_item
+#Mimsy::Notepad.report
