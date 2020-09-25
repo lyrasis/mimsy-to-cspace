@@ -7,7 +7,12 @@ To run:
 
 ```
 bundle install
-bundle exec ruby {cs_procedure/auth_type}.rb
+bundle exec ruby reporting.rb
+bundle exec ruby cspace_processing.rb
 ```
+
+`reporting.rb` will output both problem and informational reports. Uncomment the ones you want to run.
+
+`cspace_processing.rb` produces CSVs for import into CSpace. Uncomment the ones you want to run. The order does not matter because each one calls all its dependencies separately if they haven't already been run by the process. 
 
 
