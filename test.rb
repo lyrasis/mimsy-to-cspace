@@ -1,8 +1,10 @@
 require_relative 'config'
 
+Mimsy::Subject.item_subject_lookup
 #Mimsy::Subject.get_all_subjects
 #Mimsy::AcqItems.uncat_items
 #Mimsy::Cat.setup
+#Mimsy::Cat.excluded
 #Mimsy::ItemNames.prep
 #Mimsy::Inscription.for_merge
 #Mimsy::Measurements.for_merge
@@ -12,4 +14,5 @@ require_relative 'config'
 #Mimsy::Place.normalized_place_lookup
 #Cspace::Work.lookup
 #Mimsy::RelatedItem.prep
-Mimsy::Notepad.prep
+#Mimsy::Notepad.prep
+#Cspace::Acquisition.all_acq

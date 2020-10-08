@@ -307,12 +307,13 @@ module Mimsy
                                              keycolumn: :termnorm)
 
         source Kiba::Common::Sources::CSV,
-          filename: "#{DATADIR}/mimsy/items_subjects.tsv",
+          filename: "#{DATADIR}/mimsy/item_subjects.tsv",
           csv_options: TSVOPT
 
         transform{ |r| r.to_h }
         transform{ |r| @srcrows += 1; r }
 
+        #show_me!
         transform Merge::MultiRowLookup,
           lookup: @subsall,
           keycolumn: :subkey,
@@ -324,14 +325,13 @@ module Mimsy
           fieldmap: {:migratingsub => :termdisplayname}
 
         transform Delete::Fields, fields: %i[subkey subject norm]
-        #show_me!
         transform{ |r| @outrows += 1; r }
         
         filename = "#{DATADIR}/working/subject_item_lookup.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          puts "\n\nSUBJECT-ITEM LOOKUP"
+          puts "\n\nITEM-SUBJECT LOOKUP"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end

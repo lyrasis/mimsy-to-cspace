@@ -328,8 +328,7 @@ module Cspace
         end
         # this isn't working for some reason I don't have time to fix...
         # transform Merge::ConstantValueConditional,
-        #   fieldmap: {objectnamelanguage: 'English'},
-        #   conditions: {
+        #   fieldmap: {objectnamelanguage: 'English'},        #   conditions: {
         #     exclude: {
         #       field_empty: {
         #         fieldsets: [
@@ -344,6 +343,11 @@ module Cspace
         transform Rename::Field, from: :date_collected, to: :fieldcollectiondategroup
         transform Rename::Field, from: :culture, to: :objectproductionpeople
         transform Rename::Field, from: :date_made, to: :objectproductiondategroup
+        transform Rename::Field, from: :language_of_material, to: :contentlanguage
+        transform Clean::RegexpFindReplaceFieldVals,
+          fields: %i[contentlanguage],
+          find: 'eng',
+          replace: 'English'
         
         transform Rename::Field, from: :note, to: :comment1
         transform Rename::Field, from: :option4, to: :comment2
@@ -631,6 +635,7 @@ module Cspace
             collection: nil,
             comment: nil,
             contentconceptassociated: nil,
+            contentlanguage: nil,
             dimension: nil,
             dimensionsummary: nil,
             fieldcollectiondategroup: nil,

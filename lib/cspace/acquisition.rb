@@ -266,6 +266,11 @@ module Cspace
             }
           }
 
+        # remove "gift" and "transfer" from acquisitionReason when they have been conditionally
+        #  entered in acquisitionMethod
+        transform Deduplicate::Fields, source: :acquisitionMethod, targets: %i[acquisitionReason],
+          casesensitive: false
+        
         transform Deduplicate::Flag, on_field: :acquisitionReferenceNumber, in_field: :duplicate, using: @deduper
 
         transform Delete::Fields, fields: %i[akey status requested_by request_date legal_date total_requested

@@ -15,8 +15,12 @@
 #  - Adds normalized location columns (normloc normhomeloc)
 #  - Merges in newloc, newhome, locnote, and homenote from loc_lookup_initial.tsv
 #  - Concatenates newloc and new home in one column for testing
-# objects_with_unmapped_locations
-#  - writes out report of rows from obj_prepare where testing column is blank.
+# objects_with_unmapped_home_locations
+#  - writes out report of rows from obj_prepare where testing column is blank and
+#    norm value isn't marked %NOT MAPPED% in provided mapping
+# objects_with_unmapped_regular_locations
+#  - writes out report of rows from obj_prepare where testing column is blank and
+#    norm value isn't marked %NOT MAPPED% in provided mapping
 # finalize_for_mapping
 #   Includes only rows from obj_prepare where testing column is populated
 #   Includes only columns that will be used in preparing CollectionSpace LMI
@@ -156,13 +160,17 @@ module Mimsy
       Kiba.run(prepare)
     end
 
-    def objects_with_unmapped_locations
+    def objects_with_unmapped_home_locations
       prepare_object_loc_data unless File.file?("#{DATADIR}/working/cat_locs_prep.tsv")
       
-      unmapped_loc_report = Kiba.parse do
+      job = Kiba.parse do
         extend Kiba::Common::DSLExtensions::ShowMe
         @srcrows = 0
         @outrows = 0
+
+        @mappings = Lookup.csv_to_multi_hash(file: "#{DATADIR}/provided/norm_location_mapping.tsv",
+                                         csvopt: TSVOPT,
+                                         keycolumn: :norm_value)
 
         source Kiba::Common::Sources::CSV,
           filename: "#{DATADIR}/working/cat_locs_prep.tsv",
@@ -172,20 +180,80 @@ module Mimsy
         transform{ |r| @srcrows += 1; r }
 
         transform FilterRows::FieldPopulated, action: :reject, field: :concat
+        transform FilterRows::FieldPopulated, action: :keep, field: :normhomeloc
+
+        transform Merge::MultiRowLookup,
+          lookup: @mappings,
+          keycolumn: :normhomeloc,
+          fieldmap: {
+            hier: :loc_hier
+          }
+        transform FilterRows::FieldEqualTo, action: :reject, field: :hier, value: '%NOT MAPPED%'
+
+        transform Merge::ConstantValue, target: :locationtype, value: 'homeloc'
+
         #show_me!
         transform{ |r| @outrows += 1; r }
         
-        filename = "#{DATADIR}/reports/OBJECTS_with_unmapped_locations.tsv"
+        filename = "#{DATADIR}/working/OBJECTS_with_unmapped_home_locations.tsv"
         destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
         
         post_process do
-          label = 'prelim_locations/report_objects_with_unmapped_locations'
+          label = 'prelim_locations/report_objects_with_unmapped_home_locations'
           puts "\n\n#{label.upcase}"
           puts "#{@outrows} (of #{@srcrows})"
           puts "file: #{filename}"
         end
       end
-      Kiba.run(unmapped_loc_report)
+      Kiba.run(job)
+    end
+
+    def objects_with_unmapped_regular_locations
+      prepare_object_loc_data unless File.file?("#{DATADIR}/working/cat_locs_prep.tsv")
+      
+      job = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        @srcrows = 0
+        @outrows = 0
+
+        @mappings = Lookup.csv_to_multi_hash(file: "#{DATADIR}/provided/norm_location_mapping.tsv",
+                                             csvopt: TSVOPT,
+                                             keycolumn: :norm_value)
+
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/working/cat_locs_prep.tsv",
+          csv_options: TSVOPT
+
+        transform{ |r| r.to_h }
+        transform{ |r| @srcrows += 1; r }
+
+        transform FilterRows::FieldPopulated, action: :reject, field: :concat
+        transform FilterRows::FieldPopulated, action: :keep, field: :normloc
+
+        transform Merge::MultiRowLookup,
+          lookup: @mappings,
+          keycolumn: :normloc,
+          fieldmap: {
+            hier: :loc_hier
+          }
+        transform FilterRows::FieldEqualTo, action: :reject, field: :hier, value: '%NOT MAPPED%'
+
+        transform Merge::ConstantValue, target: :locationtype, value: 'loc'
+
+        #show_me!
+        transform{ |r| @outrows += 1; r }
+        
+        filename = "#{DATADIR}/working/OBJECTS_with_unmapped_regular_locations.tsv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
+        
+        post_process do
+          label = 'prelim_locations/report_objects_with_unmapped_regular_locations'
+          puts "\n\n#{label.upcase}"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+      Kiba.run(job)
     end
     
     def finalize_for_mapping

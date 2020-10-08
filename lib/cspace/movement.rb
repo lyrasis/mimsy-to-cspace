@@ -107,6 +107,7 @@ module Cspace
 
 
       transform Rename::Field, from: :id_number, to: :movementreferencenumber
+      transform Prepend::ToFieldValue, field: :movementreferencenumber, value: 'LOC'
       transform Delete::FieldsExcept, keepfields: %i[movementreferencenumber normallocationstorage currentlocationstorage currentlocationstoragenote]
 
       #show_me!
@@ -144,6 +145,10 @@ module Cspace
         transform Delete::FieldsExcept, keepfields: %i[movementreferencenumber]
         transform Rename::Field, from: :movementreferencenumber, to: :subjectIdentifier
         transform Copy::Field, from: :subjectIdentifier, to: :objectIdentifier
+        transform Clean::RegexpFindReplaceFieldVals,
+          fields: %i[objectIdentifier],
+          find: '^LOC',
+          replace: ''
         transform Merge::ConstantValue, target: :objectDocumentType, value: 'CollectionObject'
         transform Merge::ConstantValue, target: :subjectDocumentType, value: 'Movement'
 

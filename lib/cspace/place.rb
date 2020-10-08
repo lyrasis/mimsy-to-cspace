@@ -18,11 +18,11 @@ module Cspace
         transform{ |r| @srcrows += 1; r }
 
         transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'n'
-        transform Delete::Fields, fields: %i[normplace duplicate]
         transform Rename::Field, from: :place, to: :termDisplayName
         transform Merge::ConstantValue, target: :termStatus, value: 'provisional'
         transform Merge::ConstantValue, target: :termSourceLocal, value: 'Mimsy export'
         transform Merge::ConstantValue, target: :termSourceDetail, value: 'used in catalogue.csv PLACE_MADE or PLACE_COLLECTED'
+        transform Delete::Fields, fields: %i[normplace duplicate flag]
         
         #show_me!
         transform{ |r| @outrows += 1; r }

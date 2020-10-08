@@ -89,7 +89,7 @@ module Cspace
           target: :conditioncheckrefnumber,
           sep: '.',
           delete_sources: false
-        transform Prepend::ToFieldValue, field: :conditioncheckrefnumber, value: 'CC.'
+        transform Prepend::ToFieldValue, field: :conditioncheckrefnumber, value: 'CC'
         transform Deduplicate::Flag, on_field: :conditioncheckrefnumber, in_field: :duplicate, using: @deduper
         transform do |row|
           duplicate = row[:duplicate]
@@ -397,9 +397,12 @@ module Cspace
             if ccrd.match?(/^des?ins?tall/)
               row[:conditioncheckreason] = 'exhibition'
               row[:addlreason] = ccr
+            elsif ccrd == 'loan to camp barney medintz'
+              row[:conditioncheckreason] = 'loanout'
+              row[:addlreason] = ccr
             elsif ccrd.start_with?('loan')
               row[:conditioncheckreason] = 'loanin'
-              row[:addlreason] = ccr
+              row[:addlreason] = ccr unless ccrd == 'loan'
             elsif ccrd == 'annual review'
               row[:conditioncheckreason] = 'annualreview'
             elsif ccrd == 'acquisition'

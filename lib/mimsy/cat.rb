@@ -14,6 +14,9 @@
 #  - this situation is irregular and will need to be cleaned up either before or after migration
 # one_acq_item
 #  - writes informational report of catalogue rows linked to one acquisition item as expected
+# excluded
+#  - produces table of rows excluded from the migration
+#  - adds a normalized object number column
 
 #PRIVATE
 # limit_to_test_records
@@ -36,6 +39,52 @@ module Mimsy
       exclude_loans
     end
 
+    def excluded
+      setup unless File.file?("#{DATADIR}/working/catalogue.tsv")
+      
+      job = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        
+        @srcrows = 0
+        @outrows = 0
+
+        @included = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/catalogue.tsv",
+                                             csvopt: TSVOPT,
+                                             keycolumn: :mkey)
+        source Kiba::Common::Sources::CSV,
+          filename: "#{DATADIR}/mimsy/catalogue.tsv",
+          csv_options: TSVOPT
+
+        transform{ |r| r.to_h }
+
+        transform{ |r| @srcrows += 1; r }
+
+        transform Merge::MultiRowLookup,
+          lookup: @included,
+          keycolumn: :mkey,
+          fieldmap: { included: :mkey }
+
+        transform FilterRows::FieldPopulated, action: :reject, field: :included
+        transform Copy::Field, from: :id_number, to: :normid
+        transform Clean::DowncaseFieldValues, fields: %i[normid]
+        transform Delete::FieldsExcept, keepfields: %i[mkey id_number normid]
+
+        #  show_me!
+        
+        transform{ |r| @outrows += 1; r }
+        
+        filename = "#{DATADIR}/working/excluded_cat_objects.tsv"
+        destination Kiba::Extend::Destinations::CSV, filename: filename, csv_options: TSVOPT
+        
+        post_process do
+          puts "\n\nCAT ROWS EXCLUDED FROM MIGRATION"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+      Kiba.run(job)
+    end
+    
     def build_relationships
       setup unless File.file?("#{DATADIR}/working/catalogue.tsv")
       relsjob = Kiba.parse do

@@ -13,6 +13,11 @@
 #    further processing into CollectionSpace-importable records
 # no_file_report
 #  - reports on media records with no associated file (record has filename, but file is not in S3 list)
+# in_s3_not_used
+#  - Reports on media files in S3 bucket that do not match filenames that will be used to create
+#    media handling records. I.e., these files are not going to be migrated.
+#  - Creates filename with suffix stripped off, for matching to object ids
+#  - Does not report on rows where filename matches objects excluded from migration
 # no_filename_in_record
 #  - reports on media records with no filename
 # csv
@@ -76,6 +81,7 @@ module Cspace
         transform{ |r| @srcrows += 1; r }
 
         transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate, value: 'n'
+        transform Delete::Fields, fields: %i[duplicate]
         
         #show_me!
         transform{ |r| @outrows += 1; r }
@@ -296,6 +302,72 @@ module Cspace
       Kiba.run(nofilereportjob)
     end
 
+    def in_s3_not_used
+      prep_data unless File.file?("#{DATADIR}/working/media_handling.tsv")
+      Mimsy::Cat.excluded unless File.file?("#{DATADIR}/working/excluded_cat_objects.tsv")
+      
+      job = Kiba.parse do
+        extend Kiba::Common::DSLExtensions::ShowMe
+        @srcrows = 0
+        @outrows = 0
+
+        @mh = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/media_handling.tsv",
+                                       csvopt: TSVOPT,
+                                       keycolumn: :normfilename)
+        @catex = Lookup.csv_to_multi_hash(file: "#{DATADIR}/working/excluded_cat_objects.tsv",
+                                          csvopt: TSVOPT,
+                                          keycolumn: :normid)
+        
+        source Kiba::Common::Sources::CSV, filename: "#{DATADIR}/working/aws_norm.tsv", csv_options: TSVOPT
+        # Ruby's CSV gives us "CSV::Row" but we want Hash
+        transform { |r| r.to_h }
+        transform{ |r| @srcrows += 1; r }
+
+        transform Copy::Field, from: :normawsfilename, to: :objectidmatcher
+        transform do |row|
+          fn = row.fetch(:objectidmatcher, nil)
+          if fn
+            val = fn.gsub(/\.jpe?g$/, '').gsub('.tif', '').gsub('.txt', '')
+            row[:objectidmatcher] = val
+          end
+          row
+        end
+
+        transform Merge::MultiRowLookup,
+          lookup: @mh,
+          keycolumn: :normawsfilename,
+          fieldmap: {
+            procedureid: :mediakey
+          }
+
+        transform FilterRows::FieldPopulated, action: :reject, field: :procedureid
+
+        transform Merge::MultiRowLookup,
+          lookup: @catex,
+          keycolumn: :objectidmatcher,
+          fieldmap: {
+            exid: :mkey
+          }
+        transform FilterRows::FieldPopulated, action: :reject, field: :exid
+
+        transform Delete::Fields, fields: %i[procedureid exid normawsfilename objectidmatcher]
+        
+
+        #   show_me!
+        transform{ |r| @outrows += 1; r }
+        filename = "#{DATADIR}/reports/unused_media_files.tsv"
+        destination Kiba::Extend::Destinations::CSV,
+          filename: filename,
+          csv_options: TSVOPT
+        post_process do
+          puts "\n\nS3 BUCKET FILES UNUSED IN PROCEDURE"
+          puts "#{@outrows} (of #{@srcrows})"
+          puts "file: #{filename}"
+        end
+      end
+      Kiba.run(job)
+    end
+
     def no_filename_in_record
       prep_data unless File.file?("#{DATADIR}/working/media_handling.tsv")
       
@@ -345,7 +417,7 @@ module Cspace
         transform Delete::Fields, fields: %i[mkey mediakey object_id duplicate_procedure duplicate_relationship
                                              mediafilename normfilename awsfilename filesize medmkey]
         transform Rename::Field, from: :filename, to: :identificationNumber
-
+        transform Prepend::ToFieldValue, field: :identificationNumber, value: 'MR'
         # SECTION BELOW recovers from not being able to batch delete media records via converter-tool 
         transform Merge::ConstantValue, target: :concat, value: 'media'
         transform CombineValues::FromFieldsWithDelimiter,
@@ -415,12 +487,8 @@ module Cspace
         transform FilterRows::FieldPopulated, action: :keep, field: :filename
         transform FilterRows::FieldEqualTo, action: :keep, field: :duplicate_relationship, value: 'n'
         transform Delete::FieldsExcept, keepfields: %i[object_id filename]
-        transform Merge::ConstantValue, target: :concat, value: 'media'
-        transform CombineValues::FromFieldsWithDelimiter,
-          sources: %i[filename concat],
-          target: :objectIdentifier,
-          sep: ' '
-
+        transform Rename::Field, from: :filename, to: :objectIdentifier
+        transform Prepend::ToFieldValue, field: :objectIdentifier, value: 'MR'
         transform Merge::ConstantValue, target: :objectDocumentType, value: 'Media'
         transform Rename::Field, from: :object_id, to: :subjectIdentifier
         transform Merge::ConstantValue, target: :subjectDocumentType, value: 'CollectionObject'
