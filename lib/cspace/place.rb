@@ -22,6 +22,7 @@ module Cspace
         transform Merge::ConstantValue, target: :termStatus, value: 'provisional'
         transform Merge::ConstantValue, target: :termSourceLocal, value: 'Mimsy export'
         transform Merge::ConstantValue, target: :termSourceDetail, value: 'used in catalogue.csv PLACE_MADE or PLACE_COLLECTED'
+        transform Merge::ConstantValue, target: :termPrefForLang, value: 'true'
         transform Delete::Fields, fields: %i[normplace duplicate flag]
         
         #show_me!

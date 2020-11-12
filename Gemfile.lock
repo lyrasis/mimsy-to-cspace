@@ -1,9 +1,9 @@
 GIT
   remote: git://github.com/lyrasis/kiba-extend.git
-  revision: 2a3ad5f06e409f9d984b467a956b648194a35875
+  revision: 51a0ab63510cce9c7e959cb59c615bafdb0f707f
   branch: master
   specs:
-    kiba-extend (1.1.0)
+    kiba-extend (1.5.0)
       activesupport
       kiba (>= 3.0.0)
       kiba-common (>= 0.9.0)
