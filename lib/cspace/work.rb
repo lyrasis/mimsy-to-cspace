@@ -198,7 +198,14 @@ module Cspace
             row[:termprefforlangnonpreferred] = nil
           else
             pref = row.fetch(:collection)
-            alt = alt.reject{ |e| e == pref }.map{ |e| e.gsub(';', ',') }.join(';')
+            same_as_pref = alt.select{ |e| e == pref }
+            unless same_as_pref.empty?
+              alt = alt - same_as_pref
+              np = row[:termprefforlangnonpreferred].split('|')
+              same_as_pref.length.times{ np.shift }
+              row[:termprefforlangnonpreferred] = np.join(';')
+            end
+            alt = alt.map{ |e| e.gsub(';', ',') }.join(';')
           end
           row[:alt_names] = alt
           row
